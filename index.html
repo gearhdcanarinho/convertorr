@@ -1,0 +1,1610 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GLB to LFS OBJ Converter</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #111827; color: white; }
+        #canvas-container { width: 100%; height: 100%; display: block; outline: none; }
+        .custom-scrollbar::-webkit-scrollbar { width: 8px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: #1f2937; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #4b5563; border-radius: 4px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #6b7280; }
+        
+        .eraser-cursor { cursor: crosshair !important; }
+        .select-cursor { cursor: crosshair !important; }
+
+        /* Hierarchy Tree Styles */
+        .tree-item { display: flex; align-items: center; justify-content: space-between; padding: 2px 4px; border-radius: 4px; margin-bottom: 2px; }
+        .tree-item:hover { background-color: #374151; }
+        .tree-item-name { cursor: pointer; flex-grow: 1; font-size: 10px; color: #D1D5DB; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: 8px;}
+        .tree-item-name:hover { color: #60A5FA; }
+        .visibility-toggle { cursor: pointer; color: #9CA3AF; padding: 2px; }
+        .visibility-toggle:hover { color: #F3F4F6; }
+        .visibility-hidden { color: #4B5563; }
+        
+        .active-gizmo { background-color: #2563EB !important; color: white !important; font-weight: bold; }
+    </style>
+    <!-- Import Maps for Three.js -->
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+            }
+        }
+    </script>
+</head>
+<body class="flex h-screen font-sans">
+
+    <!-- Sidebar Controls -->
+    <div class="w-80 bg-gray-900 border-r border-gray-700 flex flex-col z-10 shadow-xl">
+        <div class="p-4 border-b border-gray-700">
+            <h1 class="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-emerald-400 mb-2">
+                GLB to LFS OBJ
+            </h1>
+            <select id="target-type" class="w-full bg-gray-800 border border-gray-600 text-white text-sm rounded p-2 focus:border-blue-500 focus:outline-none">
+                <option value="car">Target: Car Body (Max 32k Verts)</option>
+                <option value="wheel" selected>Target: Wheel (Max 4,240 Polys)</option>
+            </select>
+        </div>
+
+        <div class="p-4 flex-grow flex flex-col gap-4 overflow-y-auto custom-scrollbar">
+            
+            <!-- Step 1: Upload -->
+            <div class="space-y-2">
+                <div class="flex items-center gap-2 text-blue-400 font-semibold text-sm">
+                    <span class="bg-blue-900 text-blue-300 w-5 h-5 rounded-full flex items-center justify-center text-xs">1</span>
+                    Load GLB Model
+                </div>
+                
+                <label for="file-upload" class="flex flex-col items-center justify-center w-full h-16 border-2 border-gray-600 border-dashed rounded-lg cursor-pointer bg-gray-800 hover:bg-gray-700 transition-colors">
+                    <div class="flex flex-col items-center justify-center">
+                        <p class="text-sm text-gray-400"><span class="font-semibold text-white">Click to upload .GLB</span></p>
+                    </div>
+                    <input id="file-upload" type="file" class="hidden" accept=".glb" />
+                </label>
+            </div>
+
+            <!-- Hierarchy Tree (Folders) -->
+            <div id="hierarchy-panel" class="hidden space-y-2 bg-gray-800 p-3 rounded-lg border border-gray-700">
+                <h3 class="text-xs font-semibold text-gray-300 border-b border-gray-700 pb-1 flex justify-between">
+                    <span>Hierarchy (Objects)</span>
+                    <span class="text-[9px] text-gray-500 font-normal">Click to Select</span>
+                </h3>
+                <div id="hierarchy-list" class="max-h-32 overflow-y-auto custom-scrollbar space-y-0.5">
+                    <!-- Tree items generated via JS -->
+                </div>
+            </div>
+
+            <!-- Model Info -->
+            <div id="model-info" class="hidden space-y-2 bg-gray-800 p-3 rounded-lg border border-gray-700">
+                <h3 class="text-xs font-semibold text-gray-300 border-b border-gray-700 pb-1">Live Statistics</h3>
+                <div class="text-xs space-y-1">
+                    <p class="text-gray-400 flex justify-between items-center">
+                        <span>Vertices: <span id="stat-verts" class="text-white font-bold">0</span></span>
+                        <span id="vert-warning" class="hidden bg-red-900/50 text-red-400 px-1.5 py-0.5 rounded text-[10px] font-bold border border-red-700">
+                            > LIMIT
+                        </span>
+                    </p>
+                    <p class="text-gray-400 flex justify-between items-center">
+                        <span>Polygons (Tris): <span id="stat-tris" class="text-white font-bold">0</span></span>
+                        <span id="poly-warning" class="hidden bg-red-900/50 text-red-400 px-1.5 py-0.5 rounded text-[10px] font-bold border border-red-700">
+                            > LIMIT
+                        </span>
+                    </p>
+                </div>
+            </div>
+
+            <!-- Step 2: Global Rotation -->
+            <div id="rotate-panel" class="hidden space-y-2 bg-gray-800 p-3 rounded-lg border border-gray-700 shadow-inner">
+                <div class="flex items-center gap-2 text-yellow-400 font-semibold border-b border-gray-700 pb-2 text-sm">
+                    <span class="bg-yellow-900 text-yellow-300 w-5 h-5 rounded-full flex items-center justify-center text-xs">2</span>
+                    Global Rotation
+                </div>
+                <div class="pt-1 space-y-1">
+                    <div>
+                        <div class="flex justify-between text-[10px] text-gray-400 mb-0.5">
+                            <span>X (Pitch):</span> <span id="rot-x-val">0°</span>
+                        </div>
+                        <input type="range" id="rot-x" min="-180" max="180" value="0" class="w-full accent-yellow-500">
+                    </div>
+                    <div>
+                        <div class="flex justify-between text-[10px] text-gray-400 mb-0.5">
+                            <span>Y (Yaw):</span> <span id="rot-y-val">0°</span>
+                        </div>
+                        <input type="range" id="rot-y" min="-180" max="180" value="0" class="w-full accent-yellow-500">
+                    </div>
+                    <div>
+                        <div class="flex justify-between text-[10px] text-gray-400 mb-0.5">
+                            <span>Z (Roll):</span> <span id="rot-z-val">0°</span>
+                        </div>
+                        <input type="range" id="rot-z" min="-180" max="180" value="0" class="w-full accent-yellow-500">
+                    </div>
+                    <button id="btn-reset-rot" class="w-full py-1 mt-1 bg-gray-700 hover:bg-gray-600 text-white font-bold text-[10px] rounded transition-colors border border-gray-600">
+                        Reset Rotation
+                    </button>
+                </div>
+            </div>
+
+            <!-- Step 3: Edit Mesh -->
+            <div id="eraser-panel" class="hidden space-y-2 bg-gray-800 p-3 rounded-lg border border-gray-700 shadow-inner">
+                <div class="flex items-center justify-between border-b border-gray-700 pb-2">
+                    <div class="flex items-center gap-2 text-pink-400 font-semibold text-sm">
+                        <span class="bg-pink-900 text-pink-300 w-5 h-5 rounded-full flex items-center justify-center text-xs">3</span>
+                        Edit Mesh
+                    </div>
+                    <button id="btn-undo" class="hidden px-2 py-0.5 bg-gray-700 hover:bg-gray-600 text-gray-300 text-[10px] font-bold rounded border border-gray-600 flex items-center gap-1" title="Ctrl + Z">
+                        <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6"></path></svg> Undo
+                    </button>
+                </div>
+                
+                <div class="pt-1">
+                    <button id="btn-toggle-eraser" class="w-full py-1.5 px-4 bg-gray-700 hover:bg-gray-600 text-white font-bold text-xs rounded transition-colors mb-2 border border-gray-600">
+                        Enable Edit Mode: OFF
+                    </button>
+                    
+                    <div id="trim-tools" class="hidden flex flex-col gap-2">
+                        <!-- Mode Selector -->
+                        <div class="flex gap-1 bg-gray-900 p-1 rounded">
+                            <button id="mode-select" class="flex-1 py-1 bg-pink-600 text-white text-[10px] font-bold rounded">Select Faces</button>
+                            <button id="mode-brush" class="flex-1 py-1 bg-transparent text-gray-400 hover:text-white text-[10px] rounded transition-colors">Sphere Brush</button>
+                        </div>
+
+                        <!-- Select UI -->
+                        <div id="ui-select" class="space-y-2">
+                            <p class="text-[9px] text-gray-400 leading-tight">Click: Select. <strong class="text-pink-400">Shift+Drag</strong>: Box Select.</p>
+                            
+                            <!-- Transform Gizmo Controls -->
+                            <div class="bg-gray-900 p-1.5 rounded border border-gray-700">
+                                <p class="text-[9px] text-gray-500 mb-1 font-semibold">Transform Selection:</p>
+                                <div class="grid grid-cols-3 gap-1 mb-1">
+                                    <button id="btn-gizmo-translate" class="py-1 bg-gray-700 hover:bg-gray-600 text-gray-300 text-[10px] rounded active-gizmo">Move</button>
+                                    <button id="btn-gizmo-rotate" class="py-1 bg-gray-700 hover:bg-gray-600 text-gray-300 text-[10px] rounded">Rotate</button>
+                                    <button id="btn-gizmo-scale" class="py-1 bg-gray-700 hover:bg-gray-600 text-gray-300 text-[10px] rounded">Scale</button>
+                                </div>
+                                <button id="btn-move-sel" class="w-full py-1 bg-blue-600 hover:bg-blue-500 text-white text-[10px] font-bold rounded shadow-lg">Activate Transform Gizmo</button>
+                            </div>
+
+                            <!-- Modding Tools -->
+                            <div class="grid grid-cols-2 gap-1">
+                                <button id="btn-action-extract" class="py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-[10px] font-bold rounded shadow-lg">Extract Part</button>
+                                <button id="btn-action-duplicate" class="py-1.5 bg-teal-600 hover:bg-teal-500 text-white text-[10px] font-bold rounded shadow-lg">Duplicate</button>
+                            </div>
+                            
+                            <div class="flex gap-1">
+                                <button id="btn-clear-sel" class="flex-1 py-1.5 bg-gray-600 hover:bg-gray-500 text-white text-[10px] font-bold rounded shadow-lg">Clear Select</button>
+                                <button id="btn-delete-sel" class="flex-1 py-1.5 bg-red-600 hover:bg-red-500 text-white text-[10px] font-bold rounded shadow-lg">Delete (Del)</button>
+                            </div>
+                        </div>
+
+                        <!-- Brush UI -->
+                        <div id="ui-brush" class="hidden space-y-1">
+                            <div class="flex justify-between text-[10px] mb-1">
+                                <span class="text-gray-400">Brush Radius:</span>
+                                <span id="brush-size-val" class="text-pink-300 font-bold">15%</span>
+                            </div>
+                            <input type="range" id="brush-slider" min="1" max="100" value="15" class="w-full accent-pink-500">
+                            <p class="text-[9px] text-gray-400 leading-tight">Drag to erase. <strong class="text-pink-400">Scroll wheel</strong> to resize.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Step 4: Optimization -->
+            <div id="simplify-panel" class="hidden space-y-2 bg-gray-800 p-3 rounded-lg border border-gray-700 shadow-inner">
+                <div class="flex items-center gap-2 text-purple-400 font-semibold border-b border-gray-700 pb-2 text-sm">
+                    <span class="bg-purple-900 text-purple-300 w-5 h-5 rounded-full flex items-center justify-center text-xs">4</span>
+                    Optimize Polygons
+                </div>
+                <div class="pt-1">
+                    <div class="flex justify-between text-xs mb-1">
+                        <span class="text-gray-400" id="slider-label">Target Polys:</span>
+                        <span id="target-val" class="text-purple-300 font-bold">...</span>
+                    </div>
+                    <input type="range" id="simplify-slider" min="100" max="32768" value="32000" class="w-full accent-purple-500 mb-1">
+                    <p class="text-[9px] text-gray-500 text-center">Welding algorithm limits mesh holes.</p>
+                </div>
+            </div>
+
+            <!-- Step 5: Convert -->
+            <div class="space-y-2 mt-auto">
+                <div class="flex items-center gap-2 text-emerald-400 font-semibold text-sm">
+                    <span class="bg-emerald-900 text-emerald-300 w-5 h-5 rounded-full flex items-center justify-center text-xs">5</span>
+                    Export LFS .OBJ
+                </div>
+                <button id="btn-convert" disabled class="w-full py-2 px-4 bg-gray-700 text-gray-400 font-bold rounded-lg cursor-not-allowed transition-all duration-200 shadow-lg text-sm">
+                    Download .OBJ
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 3D Viewport -->
+    <div class="flex-grow relative bg-gray-950">
+        <!-- Loading Overlay -->
+        <div id="loading-overlay" class="absolute inset-0 z-20 bg-gray-950/80 flex items-center justify-center hidden backdrop-blur-sm">
+            <div class="flex flex-col items-center">
+                <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-emerald-500 mb-4"></div>
+                <p id="loading-text" class="text-emerald-400 font-semibold tracking-wider text-sm">PROCESSING...</p>
+            </div>
+        </div>
+        
+        <!-- Viewport UI Overlay -->
+        <div class="absolute top-4 left-4 z-10 pointer-events-none flex flex-col gap-2">
+            <div>
+                <p class="text-sm font-bold text-gray-500 tracking-widest uppercase">3D Preview</p>
+                <p id="filename-display" class="text-xs text-gray-600">No model loaded</p>
+            </div>
+            
+            <div class="flex flex-col items-start gap-2">
+                <!-- Wireframe Toggle -->
+                <button id="btn-wireframe" class="pointer-events-auto bg-gray-800/80 hover:bg-gray-700 border border-gray-600 text-white text-[10px] font-bold py-1 px-2 rounded backdrop-blur shadow">
+                    Wireframe: OFF
+                </button>
+
+                <!-- Camera Hotkeys -->
+                <div class="bg-gray-900/80 p-2 rounded border border-gray-800 backdrop-blur-sm pointer-events-auto">
+                    <p class="text-[10px] text-gray-400 font-bold mb-1 border-b border-gray-700 pb-1">Camera Hotkeys</p>
+                    <div class="grid grid-cols-2 gap-x-3 gap-y-1 text-[9px] text-gray-500 font-mono">
+                        <p><strong class="text-white">T</strong>: Top</p>
+                        <p><strong class="text-white">U</strong>: Under</p>
+                        <p><strong class="text-white">F</strong>: Front</p>
+                        <p><strong class="text-white">B</strong>: Back</p>
+                        <p><strong class="text-white">L</strong>: Left</p>
+                        <p><strong class="text-white">R</strong>: Right</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Marquee Selection Box -->
+        <div id="selection-box" class="hidden absolute border border-pink-500 bg-pink-500/20 pointer-events-none z-30"></div>
+
+        <div id="canvas-container" tabindex="0" class="w-full h-full outline-none"></div>
+    </div>
+
+    <!-- Main Logic -->
+    <script type="module">
+        import * as THREE from 'three';
+        import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+        import { SimplifyModifier } from 'three/addons/modifiers/SimplifyModifier.js';
+        import * as BufferGeometryUtils from 'three/addons/utils/BufferGeometryUtils.js';
+        import { TransformControls } from 'three/addons/controls/TransformControls.js';
+
+        // --- App State ---
+        let scene, camera, renderer, controls;
+        let modelContainer;
+        let currentModel = null;
+        let maxModelDimension = 1;
+        
+        let modelStats = { vertices: 0, triangles: 0 };
+        let baseStats = { vertices: 0, triangles: 0 }; 
+        
+        let originalFileName = "model";
+
+        const LIMITS = {
+            car: { verts: 32768, polys: 65536 },
+            wheel: { verts: 32768, polys: 4240 }
+        };
+
+        // Editing State
+        let isEraserMode = false;
+        let trimMode = 'select';
+        let isDragging = false;
+        let pointerDownPos = { x: 0, y: 0 };
+        let raycaster = new THREE.Raycaster();
+        let mouse = new THREE.Vector2();
+        let isWireframeActive = false;
+        
+        // Undo History
+        let historyStack = [];
+        const MAX_HISTORY = 20;
+        
+        // Selection Box
+        let isMarqueeSelecting = false;
+        let marqueeStart = new THREE.Vector2();
+        let marqueeEnd = new THREE.Vector2();
+
+        // Advanced Gizmo State
+        let transformControl, transformProxy;
+        let isGizmoDragging = false;
+        let currentGizmoMode = 'translate';
+        let proxyLocalVertices = new Map(); // Stores math for robust transform calculation
+        let initialProxyMatrixInv = new THREE.Matrix4();
+
+        // Visual Elements
+        let brushMesh, hoverMesh, selectionMesh;
+
+        // --- DOM Elements ---
+        const container = document.getElementById('canvas-container');
+        const selectionBox = document.getElementById('selection-box');
+        const fileInput = document.getElementById('file-upload');
+        const btnConvert = document.getElementById('btn-convert');
+        const loadingOverlay = document.getElementById('loading-overlay');
+        const loadingText = document.getElementById('loading-text');
+        
+        const hierarchyPanel = document.getElementById('hierarchy-panel');
+        const hierarchyList = document.getElementById('hierarchy-list');
+        const btnWireframe = document.getElementById('btn-wireframe');
+        
+        const targetTypeSelect = document.getElementById('target-type');
+        const modelInfoPanel = document.getElementById('model-info');
+        const statVerts = document.getElementById('stat-verts');
+        const statTris = document.getElementById('stat-tris');
+        const vertWarning = document.getElementById('vert-warning');
+        const polyWarning = document.getElementById('poly-warning');
+        
+        const rotatePanel = document.getElementById('rotate-panel');
+        const rotX = document.getElementById('rot-x');
+        const rotY = document.getElementById('rot-y');
+        const rotZ = document.getElementById('rot-z');
+        const rotXVal = document.getElementById('rot-x-val');
+        const rotYVal = document.getElementById('rot-y-val');
+        const rotZVal = document.getElementById('rot-z-val');
+        const btnResetRot = document.getElementById('btn-reset-rot');
+
+        const eraserPanel = document.getElementById('eraser-panel');
+        const btnToggleEraser = document.getElementById('btn-toggle-eraser');
+        const trimTools = document.getElementById('trim-tools');
+        const modeSelect = document.getElementById('mode-select');
+        const modeBrush = document.getElementById('mode-brush');
+        const uiSelect = document.getElementById('ui-select');
+        const uiBrush = document.getElementById('ui-brush');
+        
+        const btnGizmoTranslate = document.getElementById('btn-gizmo-translate');
+        const btnGizmoRotate = document.getElementById('btn-gizmo-rotate');
+        const btnGizmoScale = document.getElementById('btn-gizmo-scale');
+        
+        const btnActionExtract = document.getElementById('btn-action-extract');
+        const btnActionDuplicate = document.getElementById('btn-action-duplicate');
+
+        const btnMoveSel = document.getElementById('btn-move-sel');
+        const btnDeleteSel = document.getElementById('btn-delete-sel');
+        const btnClearSel = document.getElementById('btn-clear-sel');
+        const btnUndo = document.getElementById('btn-undo');
+        const brushSlider = document.getElementById('brush-slider');
+        const brushSizeVal = document.getElementById('brush-size-val');
+
+        const simplifyPanel = document.getElementById('simplify-panel');
+        const simplifySlider = document.getElementById('simplify-slider');
+        const sliderLabel = document.getElementById('slider-label');
+        const targetVal = document.getElementById('target-val');
+
+        // --- Init Three.js ---
+        function initThreeJS() {
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color('#0a0a0a');
+            
+            modelContainer = new THREE.Group();
+            scene.add(modelContainer);
+            
+            const gridHelper = new THREE.GridHelper(10, 10, 0x444444, 0x222222);
+            scene.add(gridHelper);
+
+            camera = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 0.1, 1000);
+            camera.position.set(3, 3, 5);
+
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(container.clientWidth, container.clientHeight);
+            renderer.setPixelRatio(window.devicePixelRatio);
+            renderer.outputColorSpace = THREE.SRGBColorSpace;
+            renderer.toneMapping = THREE.ACESFilmicToneMapping;
+            container.appendChild(renderer.domElement);
+
+            controls = new OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+            controls.dampingFactor = 0.05;
+
+            // --- Advanced Modding Gizmos ---
+            transformProxy = new THREE.Object3D();
+            scene.add(transformProxy);
+
+            transformControl = new TransformControls(camera, renderer.domElement);
+            
+            transformControl.addEventListener('dragging-changed', function (event) {
+                controls.enabled = !event.value;
+                isGizmoDragging = event.value;
+
+                if (event.value) {
+                    saveHistoryState();
+                    
+                    // Robust Mathematics for Move, Scale, and Rotation on arbitrary vertices
+                    initialProxyMatrixInv.copy(transformProxy.matrixWorld).invert();
+                    proxyLocalVertices.clear();
+                    
+                    currentModel.traverse((child) => {
+                        if (child.isMesh && child.userData.selectedFaces && child.userData.selectedFaces.size > 0 && !child.userData.isHidden) {
+                            const index = child.userData.originalGeometry.index;
+                            const pos = child.userData.originalGeometry.attributes.position;
+                            child.userData.selectedFaces.forEach(faceIdx => {
+                                const a = index.getX(faceIdx * 3), b = index.getX(faceIdx * 3 + 1), c = index.getX(faceIdx * 3 + 2);
+                                [a, b, c].forEach(idx => {
+                                    const key = child.uuid + '_' + idx;
+                                    if (!proxyLocalVertices.has(key)) {
+                                        // Convert from Mesh Local -> World -> Proxy Local
+                                        const vLocal = new THREE.Vector3().fromBufferAttribute(pos, idx);
+                                        const vWorld = vLocal.applyMatrix4(child.matrixWorld);
+                                        const vProxy = vWorld.applyMatrix4(initialProxyMatrixInv);
+                                        proxyLocalVertices.set(key, vProxy);
+                                    }
+                                });
+                            });
+                        }
+                    });
+                } else {
+                    recalculateBaseStats();
+                }
+            });
+
+            // Apply transformations
+            transformControl.addEventListener('change', () => {
+                if (!isGizmoDragging) return;
+                
+                currentModel.traverse((child) => {
+                    if (child.isMesh && child.userData.selectedFaces && child.userData.selectedFaces.size > 0 && !child.userData.isHidden) {
+                        const pos = child.userData.originalGeometry.attributes.position;
+                        const invMeshWorld = child.matrixWorld.clone().invert();
+                        
+                        child.userData.selectedFaces.forEach(faceIdx => {
+                            const index = child.userData.originalGeometry.index;
+                            const a = index.getX(faceIdx * 3), b = index.getX(faceIdx * 3 + 1), c = index.getX(faceIdx * 3 + 2);
+                            
+                            [a, b, c].forEach(idx => {
+                                const key = child.uuid + '_' + idx;
+                                const vProxyLocal = proxyLocalVertices.get(key);
+                                if (vProxyLocal) {
+                                    // Convert from Proxy Local -> World (with new Transform applied) -> Mesh Local
+                                    const newWorldV = vProxyLocal.clone().applyMatrix4(transformProxy.matrixWorld);
+                                    const newLocalV = newWorldV.applyMatrix4(invMeshWorld);
+                                    pos.setXYZ(idx, newLocalV.x, newLocalV.y, newLocalV.z);
+                                }
+                            });
+                        });
+                        
+                        pos.needsUpdate = true;
+                        if (child.geometry.attributes.position) {
+                            child.geometry.attributes.position.array.set(pos.array);
+                            child.geometry.attributes.position.needsUpdate = true;
+                            child.geometry.computeVertexNormals();
+                        }
+                    }
+                });
+                updateSelectionVisuals();
+            });
+            scene.add(transformControl);
+
+            // Visual Helpers
+            const brushGeom = new THREE.SphereGeometry(1, 16, 16);
+            const brushMat = new THREE.MeshBasicMaterial({ color: 0xff0055, wireframe: true, transparent: true, opacity: 0.5, depthTest: false });
+            brushMesh = new THREE.Mesh(brushGeom, brushMat);
+            brushMesh.visible = false;
+            scene.add(brushMesh);
+
+            hoverMesh = new THREE.Mesh(new THREE.BufferGeometry(), new THREE.MeshBasicMaterial({ color: 0xffff00, side: THREE.DoubleSide, transparent: true, opacity: 0.5, depthTest: false }));
+            hoverMesh.visible = false;
+            scene.add(hoverMesh);
+
+            selectionMesh = new THREE.Mesh(new THREE.BufferGeometry(), new THREE.MeshBasicMaterial({ color: 0xff0000, side: THREE.DoubleSide, transparent: true, opacity: 0.7, depthTest: false }));
+            selectionMesh.visible = false;
+            scene.add(selectionMesh);
+
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+            scene.add(ambientLight);
+            const dirLight = new THREE.DirectionalLight(0xffffff, 2);
+            dirLight.position.set(5, 10, 7.5);
+            scene.add(dirLight);
+            const fillLight = new THREE.DirectionalLight(0xffffff, 1);
+            fillLight.position.set(-5, 0, -5);
+            scene.add(fillLight);
+
+            window.addEventListener('resize', onWindowResize, false);
+            setupMouseEvents();
+            setupRotationEvents();
+            setupCameraHotkeys();
+            animate();
+        }
+
+        function onWindowResize() {
+            camera.aspect = container.clientWidth / container.clientHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(container.clientWidth, container.clientHeight);
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            if(controls.enabled) controls.update();
+            renderer.render(scene, camera);
+        }
+
+        // --- Upload Logic ---
+        fileInput.addEventListener('change', function(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            originalFileName = file.name.replace(/\.[^/.]+$/, "");
+            document.getElementById('filename-display').textContent = file.name;
+            showLoading(true, "LOADING GLB...");
+
+            const reader = new FileReader();
+            reader.onload = function(e) { loadGLTF(e.target.result); };
+            reader.readAsArrayBuffer(file);
+        });
+
+        function loadGLTF(arrayBuffer) {
+            const loader = new GLTFLoader();
+            
+            if (currentModel) {
+                modelContainer.remove(currentModel);
+                disableMoveGizmo();
+                currentModel.traverse((child) => {
+                    if (child.isMesh) {
+                        child.geometry.dispose();
+                        if(Array.isArray(child.material)) child.material.forEach(m => m.dispose());
+                        else child.material.dispose();
+                    }
+                });
+            }
+
+            loader.parse(arrayBuffer, '', (gltf) => {
+                currentModel = gltf.scene;
+                
+                currentModel.traverse((child) => {
+                    if (child.isMesh) {
+                        if (child.material) {
+                            child.material.side = THREE.DoubleSide;
+                            child.material.wireframe = isWireframeActive;
+                        }
+                        
+                        try {
+                            let merged = BufferGeometryUtils.mergeVertices(child.geometry, 1e-3); 
+                            merged.computeVertexNormals();
+                            child.geometry = merged;
+                        } catch(e) { console.warn("Error welding model vertices.", e); }
+                        
+                        child.userData.originalGeometry = child.geometry.clone();
+                        child.userData.deletedFaces = new Set();
+                        child.userData.selectedFaces = new Set();
+                        child.userData.isHidden = false;
+                    }
+                });
+
+                modelContainer.rotation.set(0, 0, 0);
+                rotX.value = 0; rotY.value = 0; rotZ.value = 0;
+                rotXVal.textContent = "0°"; rotYVal.textContent = "0°"; rotZVal.textContent = "0°";
+
+                const box = new THREE.Box3().setFromObject(currentModel);
+                const size = box.getSize(new THREE.Vector3());
+                maxModelDimension = Math.max(size.x, size.y, size.z);
+                const scale = 4 / maxModelDimension;
+                currentModel.scale.set(scale, scale, scale);
+                
+                const boxScaled = new THREE.Box3().setFromObject(currentModel);
+                const centerScaled = boxScaled.getCenter(new THREE.Vector3());
+                currentModel.position.set(-centerScaled.x, -boxScaled.min.y, -centerScaled.z);
+
+                modelContainer.add(currentModel);
+                resetCamera();
+
+                buildHierarchyTree();
+                updateTargetUI();
+                recalculateBaseStats();
+                clearHistory();
+                
+                hierarchyPanel.classList.remove('hidden');
+                modelInfoPanel.classList.remove('hidden');
+                rotatePanel.classList.remove('hidden');
+                eraserPanel.classList.remove('hidden');
+                simplifyPanel.classList.remove('hidden');
+
+                btnConvert.disabled = false;
+                btnConvert.classList.remove('bg-gray-700', 'text-gray-400', 'cursor-not-allowed');
+                btnConvert.classList.add('bg-emerald-600', 'text-white', 'hover:bg-emerald-500');
+
+                showLoading(false);
+            }, () => { alert("Error loading GLB file."); showLoading(false); });
+        }
+
+        // --- Hierarchy Tree Logic ---
+        function buildHierarchyTree() {
+            hierarchyList.innerHTML = '';
+            
+            const eyeOpen = `<svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path></svg>`;
+            const eyeClosed = `<svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21"></path></svg>`;
+
+            let partCount = 0;
+
+            currentModel.traverse((child) => {
+                if (child.isMesh) {
+                    partCount++;
+                    const name = child.name || `Part_${partCount}`;
+                    
+                    const div = document.createElement('div');
+                    div.className = 'tree-item';
+                    
+                    const nameSpan = document.createElement('span');
+                    nameSpan.className = 'tree-item-name';
+                    nameSpan.textContent = name;
+                    nameSpan.title = "Click to select entire part";
+                    nameSpan.addEventListener('click', () => {
+                        if (!isEraserMode) {
+                            alert("Enable 'Edit Mode' (Step 3) to select parts.");
+                            return;
+                        }
+                        
+                        saveHistoryState();
+                        
+                        const indexCount = child.userData.originalGeometry.index.count;
+                        for(let i = 0; i < indexCount; i+=3) {
+                            const faceIdx = i / 3;
+                            if (!child.userData.deletedFaces.has(faceIdx)) {
+                                child.userData.selectedFaces.add(faceIdx);
+                            }
+                        }
+                        updateSelectionVisuals();
+                    });
+
+                    const visSpan = document.createElement('span');
+                    visSpan.className = 'visibility-toggle';
+                    visSpan.innerHTML = child.userData.isHidden ? eyeClosed : eyeOpen;
+                    if (child.userData.isHidden) visSpan.classList.add('visibility-hidden');
+                    
+                    visSpan.addEventListener('click', () => {
+                        child.userData.isHidden = !child.userData.isHidden;
+                        child.visible = !child.userData.isHidden;
+                        
+                        visSpan.innerHTML = child.userData.isHidden ? eyeClosed : eyeOpen;
+                        if (child.userData.isHidden) visSpan.classList.add('visibility-hidden');
+                        else visSpan.classList.remove('visibility-hidden');
+                        
+                        recalculateBaseStats();
+                        updateLiveStats();
+                    });
+
+                    div.appendChild(nameSpan);
+                    div.appendChild(visSpan);
+                    hierarchyList.appendChild(div);
+                }
+            });
+        }
+
+        // --- Wireframe & Camera ---
+        btnWireframe.addEventListener('click', () => {
+            isWireframeActive = !isWireframeActive;
+            btnWireframe.textContent = isWireframeActive ? "Wireframe: ON" : "Wireframe: OFF";
+            btnWireframe.classList.toggle('text-emerald-400', isWireframeActive);
+            btnWireframe.classList.toggle('text-white', !isWireframeActive);
+            if (currentModel) {
+                currentModel.traverse(c => {
+                    if (c.isMesh && c.material) {
+                        c.material.wireframe = isWireframeActive;
+                    }
+                });
+            }
+        });
+
+        function resetCamera() {
+            camera.position.set(4, 3, 5);
+            controls.target.set(0, 2, 0);
+            controls.update();
+        }
+
+        function setupCameraHotkeys() {
+            window.addEventListener('keydown', (e) => {
+                if (document.activeElement.tagName === 'INPUT') return;
+                if (!currentModel) return;
+
+                const dist = 5; 
+                const target = new THREE.Vector3(0, 2, 0);
+
+                switch(e.key.toLowerCase()) {
+                    case 't': camera.position.set(0, dist + 2, 0); break; 
+                    case 'u': camera.position.set(0, -dist + 2, 0); break; 
+                    case 'f': camera.position.set(0, 2, dist); break; 
+                    case 'b': camera.position.set(0, 2, -dist); break; 
+                    case 'l': camera.position.set(-dist, 2, 0); break; 
+                    case 'r': camera.position.set(dist, 2, 0); break; 
+                    case 'z': 
+                        if ((e.ctrlKey || e.metaKey) && isEraserMode) {
+                            undoLastAction();
+                            e.preventDefault();
+                        }
+                        break;
+                    case 'delete':
+                    case 'backspace':
+                        if (isEraserMode && trimMode === 'select') {
+                            deleteSelectedFaces();
+                            e.preventDefault();
+                        }
+                        break;
+                    default: return; 
+                }
+                
+                if (['t','u','f','b','l','r'].includes(e.key.toLowerCase())) {
+                    controls.target.copy(target);
+                    controls.update();
+                }
+            });
+        }
+
+        // --- Limits & Stats ---
+        targetTypeSelect.addEventListener('change', () => {
+            if(!currentModel) return;
+            updateTargetUI();
+            updateLiveStats();
+        });
+
+        function updateTargetUI() {
+            const target = targetTypeSelect.value;
+            const maxPolys = LIMITS[target].polys;
+            sliderLabel.textContent = `Target Polys:`;
+            simplifySlider.max = baseStats.triangles;
+            const defaultTarget = Math.min(baseStats.triangles, maxPolys);
+            simplifySlider.value = defaultTarget;
+            targetVal.textContent = defaultTarget.toLocaleString();
+            debouncedSimplify(defaultTarget);
+        }
+
+        function recalculateBaseStats() {
+            baseStats = { vertices: 0, triangles: 0 };
+            currentModel.traverse((child) => {
+                if (child.isMesh && child.userData.originalGeometry && !child.userData.isHidden) {
+                    const idx = child.userData.originalGeometry.index;
+                    const deleted = child.userData.deletedFaces;
+                    
+                    const activeIndices = new Set();
+                    let activeFaces = 0;
+                    for(let i=0; i<idx.count; i+=3) {
+                        const faceIdx = i / 3;
+                        if(!deleted.has(faceIdx)) {
+                            activeFaces++;
+                            activeIndices.add(idx.getX(i));
+                            activeIndices.add(idx.getX(i+1));
+                            activeIndices.add(idx.getX(i+2));
+                        }
+                    }
+                    baseStats.triangles += activeFaces;
+                    baseStats.vertices += activeIndices.size;
+                }
+            });
+            updateTargetUI();
+        }
+
+        function updateLiveStats() {
+            modelStats = { vertices: 0, triangles: 0 };
+            currentModel.traverse((child) => {
+                if (child.isMesh && child.geometry.index && !child.userData.isHidden) {
+                    modelStats.triangles += child.geometry.index.count / 3;
+                    const idx = child.geometry.index;
+                    const activeSet = new Set();
+                    for(let i=0; i<idx.count; i++) activeSet.add(idx.getX(i));
+                    modelStats.vertices += activeSet.size;
+                }
+            });
+
+            statVerts.textContent = modelStats.vertices.toLocaleString();
+            statTris.textContent = Math.floor(modelStats.triangles).toLocaleString();
+            
+            const target = targetTypeSelect.value;
+            if(modelStats.vertices > LIMITS[target].verts) {
+                vertWarning.classList.remove('hidden');
+                statVerts.classList.add('text-red-400'); statVerts.classList.remove('text-white');
+            } else {
+                vertWarning.classList.add('hidden');
+                statVerts.classList.remove('text-red-400'); statVerts.classList.add('text-white');
+            }
+            if(modelStats.triangles > LIMITS[target].polys) {
+                polyWarning.classList.remove('hidden');
+                statTris.classList.add('text-red-400'); statTris.classList.remove('text-white');
+            } else {
+                polyWarning.classList.add('hidden');
+                statTris.classList.remove('text-red-400'); statTris.classList.add('text-white');
+            }
+        }
+
+        function setupRotationEvents() {
+            const updateRot = () => {
+                if(!modelContainer) return;
+                const x = parseInt(rotX.value), y = parseInt(rotY.value), z = parseInt(rotZ.value);
+                rotXVal.textContent = x + '°'; rotYVal.textContent = y + '°'; rotZVal.textContent = z + '°';
+                modelContainer.rotation.set(THREE.MathUtils.degToRad(x), THREE.MathUtils.degToRad(y), THREE.MathUtils.degToRad(z));
+                updateSelectionVisuals();
+            };
+            rotX.addEventListener('input', updateRot);
+            rotY.addEventListener('input', updateRot);
+            rotZ.addEventListener('input', updateRot);
+            btnResetRot.addEventListener('click', () => { rotX.value = 0; rotY.value = 0; rotZ.value = 0; updateRot(); });
+        }
+
+        // --- Undo / History System (Advanced) ---
+        function saveHistoryState() {
+            if (!currentModel) return;
+            const state = [];
+            currentModel.traverse((child) => {
+                if (child.isMesh && child.userData.originalGeometry) {
+                    state.push({
+                        uuid: child.uuid,
+                        deletedFaces: new Set(child.userData.deletedFaces),
+                        selectedFaces: new Set(child.userData.selectedFaces),
+                        positions: new Float32Array(child.userData.originalGeometry.attributes.position.array)
+                    });
+                }
+            });
+            historyStack.push(state);
+            if (historyStack.length > MAX_HISTORY) historyStack.shift();
+            updateUndoUI();
+        }
+
+        function undoLastAction() {
+            if (historyStack.length === 0 || !currentModel) return;
+            
+            disableMoveGizmo();
+            
+            const lastState = historyStack.pop();
+            const uuidsInState = new Set(lastState.map(s => s.uuid));
+            
+            // If objects were created (e.g. Extract/Duplicate), remove them on undo
+            const objectsToRemove = [];
+            currentModel.traverse((child) => {
+                if (child.isMesh && !uuidsInState.has(child.uuid)) objectsToRemove.push(child);
+            });
+            objectsToRemove.forEach(obj => obj.parent.remove(obj));
+
+            // Restore previous objects
+            currentModel.traverse((child) => {
+                if (child.isMesh && child.userData.originalGeometry) {
+                    const savedState = lastState.find(s => s.uuid === child.uuid);
+                    if (savedState) {
+                        child.userData.deletedFaces = new Set(savedState.deletedFaces);
+                        child.userData.selectedFaces = new Set(savedState.selectedFaces);
+                        
+                        const posAttr = child.userData.originalGeometry.attributes.position;
+                        posAttr.array.set(savedState.positions);
+                        posAttr.needsUpdate = true;
+
+                        if (child.geometry.attributes.position) {
+                            child.geometry.attributes.position.array.set(savedState.positions);
+                            child.geometry.attributes.position.needsUpdate = true;
+                            child.geometry.computeVertexNormals();
+                        }
+                    }
+                }
+            });
+            
+            buildHierarchyTree(); // Rebuild incase objects removed
+            updateSelectionVisuals();
+            resetGeometryForErasing();
+            recalculateBaseStats();
+            updateUndoUI();
+        }
+
+        function clearHistory() {
+            historyStack = [];
+            updateUndoUI();
+        }
+
+        function updateUndoUI() {
+            if (historyStack.length > 0) btnUndo.classList.remove('hidden');
+            else btnUndo.classList.add('hidden');
+        }
+        
+        btnUndo.addEventListener('click', undoLastAction);
+
+        // --- Gizmo Mode Toggles ---
+        function setGizmoMode(mode) {
+            currentGizmoMode = mode;
+            transformControl.setMode(mode);
+            btnGizmoTranslate.classList.toggle('active-gizmo', mode === 'translate');
+            btnGizmoRotate.classList.toggle('active-gizmo', mode === 'rotate');
+            btnGizmoScale.classList.toggle('active-gizmo', mode === 'scale');
+        }
+        btnGizmoTranslate.addEventListener('click', () => setGizmoMode('translate'));
+        btnGizmoRotate.addEventListener('click', () => setGizmoMode('rotate'));
+        btnGizmoScale.addEventListener('click', () => setGizmoMode('scale'));
+
+        // --- Editing Modes UI ---
+        modeSelect.addEventListener('click', () => {
+            trimMode = 'select';
+            modeSelect.classList.replace('bg-transparent', 'bg-pink-600');
+            modeSelect.classList.replace('text-gray-400', 'text-white');
+            modeSelect.classList.add('font-bold');
+            modeBrush.classList.replace('bg-pink-600', 'bg-transparent');
+            modeBrush.classList.replace('text-white', 'text-gray-400');
+            modeBrush.classList.remove('font-bold');
+            uiSelect.classList.remove('hidden');
+            uiBrush.classList.add('hidden');
+            brushMesh.visible = false;
+            container.classList.add('select-cursor');
+            controls.enabled = true;
+        });
+
+        modeBrush.addEventListener('click', () => {
+            trimMode = 'brush';
+            modeBrush.classList.replace('bg-transparent', 'bg-pink-600');
+            modeBrush.classList.replace('text-gray-400', 'text-white');
+            modeBrush.classList.add('font-bold');
+            modeSelect.classList.replace('bg-pink-600', 'bg-transparent');
+            modeSelect.classList.replace('text-white', 'text-gray-400');
+            modeSelect.classList.remove('font-bold');
+            uiBrush.classList.remove('hidden');
+            uiSelect.classList.add('hidden');
+            hoverMesh.visible = false;
+            container.classList.add('eraser-cursor');
+            controls.enabled = false;
+            disableMoveGizmo();
+        });
+
+        btnToggleEraser.addEventListener('click', () => {
+            isEraserMode = !isEraserMode;
+            if (isEraserMode) {
+                btnToggleEraser.textContent = "Edit Mode Active (Click to disable)";
+                btnToggleEraser.classList.replace('bg-gray-700', 'bg-pink-600');
+                btnToggleEraser.classList.replace('hover:bg-gray-600', 'hover:bg-pink-500');
+                trimTools.classList.remove('hidden');
+                
+                if (trimMode === 'select') controls.enabled = true;
+                else controls.enabled = false;
+                container.classList.add(trimMode === 'select' ? 'select-cursor' : 'eraser-cursor');
+                resetGeometryForErasing();
+                updateSelectionVisuals();
+            } else {
+                btnToggleEraser.textContent = "Enable Edit Mode: OFF";
+                btnToggleEraser.classList.replace('bg-pink-600', 'bg-gray-700');
+                btnToggleEraser.classList.replace('hover:bg-pink-500', 'hover:bg-gray-600');
+                trimTools.classList.add('hidden');
+                container.classList.remove('eraser-cursor', 'select-cursor');
+                controls.enabled = true;
+                brushMesh.visible = false;
+                hoverMesh.visible = false;
+                selectionMesh.visible = false;
+                disableMoveGizmo();
+                recalculateBaseStats();
+            }
+        });
+
+        // --- Modding Extract & Duplicate Tools ---
+        function performExtractionOrDuplication(isExtract) {
+            saveHistoryState();
+            let createdAny = false;
+            const newMeshesToAttach = [];
+
+            currentModel.traverse((child) => {
+                if (child.isMesh && child.userData.selectedFaces && child.userData.selectedFaces.size > 0 && !child.userData.isHidden) {
+                    const origGeom = child.userData.originalGeometry;
+                    const pos = origGeom.attributes.position;
+                    const norm = origGeom.attributes.normal;
+                    const index = origGeom.index;
+
+                    const newIndices = [];
+                    const map = new Map();
+                    let newIdx = 0;
+                    const newPos = [], newNorm = [];
+
+                    child.userData.selectedFaces.forEach(faceIdx => {
+                        const a = index.getX(faceIdx * 3), b = index.getX(faceIdx * 3 + 1), c = index.getX(faceIdx * 3 + 2);
+                        [a, b, c].forEach(idx => {
+                            if(!map.has(idx)) {
+                                map.set(idx, newIdx++);
+                                newPos.push(pos.getX(idx), pos.getY(idx), pos.getZ(idx));
+                                if(norm) newNorm.push(norm.getX(idx), norm.getY(idx), norm.getZ(idx));
+                            }
+                        });
+                        newIndices.push(map.get(a), map.get(b), map.get(c));
+                    });
+
+                    const newGeom = new THREE.BufferGeometry();
+                    newGeom.setAttribute('position', new THREE.Float32BufferAttribute(newPos, 3));
+                    if(norm) newGeom.setAttribute('normal', new THREE.Float32BufferAttribute(newNorm, 3));
+                    newGeom.setIndex(newIndices);
+
+                    // Reconstruct Mesh safely
+                    const newMesh = new THREE.Mesh(newGeom, child.material);
+                    newMesh.name = (child.name || "Part") + (isExtract ? "_Extracted" : "_Duplicate");
+                    newMesh.position.copy(child.position);
+                    newMesh.quaternion.copy(child.quaternion);
+                    newMesh.scale.copy(child.scale);
+
+                    newMesh.userData.originalGeometry = newGeom.clone();
+                    newMesh.userData.deletedFaces = new Set();
+                    newMesh.userData.selectedFaces = new Set();
+                    newMesh.userData.isHidden = false;
+
+                    newMeshesToAttach.push({parent: child.parent, mesh: newMesh});
+
+                    if (isExtract) {
+                        child.userData.selectedFaces.forEach(faceIdx => child.userData.deletedFaces.add(faceIdx));
+                    }
+                    child.userData.selectedFaces.clear();
+                    createdAny = true;
+                }
+            });
+
+            if (createdAny) {
+                newMeshesToAttach.forEach(item => item.parent.add(item.mesh));
+                disableMoveGizmo();
+                updateSelectionVisuals();
+                resetGeometryForErasing(); // Apply deletes visually
+                recalculateBaseStats();
+                buildHierarchyTree();
+            } else {
+                historyStack.pop();
+                updateUndoUI();
+                alert("Please select faces to " + (isExtract ? "extract" : "duplicate") + ".");
+            }
+        }
+
+        btnActionExtract.addEventListener('click', () => performExtractionOrDuplication(true));
+        btnActionDuplicate.addEventListener('click', () => performExtractionOrDuplication(false));
+
+        // Tool Actions
+        btnDeleteSel.addEventListener('click', deleteSelectedFaces);
+        btnClearSel.addEventListener('click', () => {
+            saveHistoryState();
+            disableMoveGizmo();
+            currentModel.traverse((child) => { if (child.isMesh && child.userData.selectedFaces) child.userData.selectedFaces.clear(); });
+            updateSelectionVisuals();
+        });
+
+        brushSlider.addEventListener('input', (e) => {
+            brushSizeVal.textContent = e.target.value + '%';
+            const scaleRad = (e.target.value / 100) * (4 / maxModelDimension); 
+            brushMesh.scale.setScalar(scaleRad);
+        });
+
+        // Toggle Gizmo Action
+        btnMoveSel.addEventListener('click', () => {
+            let hasSelection = false;
+            let center = new THREE.Vector3();
+            let count = 0;
+            
+            currentModel.traverse((child) => {
+                if (child.isMesh && child.userData.selectedFaces && child.userData.selectedFaces.size > 0 && !child.userData.isHidden) {
+                    hasSelection = true;
+                    const pos = child.userData.originalGeometry.attributes.position;
+                    const index = child.userData.originalGeometry.index;
+                    const matrix = child.matrixWorld;
+                    
+                    child.userData.selectedFaces.forEach(faceIdx => {
+                        const a = index.getX(faceIdx * 3);
+                        const v = new THREE.Vector3().fromBufferAttribute(pos, a).applyMatrix4(matrix);
+                        center.add(v);
+                        count++;
+                    });
+                }
+            });
+
+            if (!hasSelection) {
+                alert("Please select the faces you want to transform first (Shift + Click or Drag).");
+                return;
+            }
+
+            if (transformControl.object) {
+                disableMoveGizmo();
+            } else {
+                center.divideScalar(count);
+                transformProxy.position.copy(center);
+                transformProxy.quaternion.copy(modelContainer.quaternion); 
+                transformProxy.scale.set(1, 1, 1);
+                transformControl.attach(transformProxy);
+                
+                btnMoveSel.classList.replace('bg-blue-600', 'bg-blue-800');
+                btnMoveSel.classList.replace('hover:bg-blue-500', 'hover:bg-blue-700');
+                btnMoveSel.textContent = "Finish Transform";
+            }
+        });
+
+        function disableMoveGizmo() {
+            if (transformControl.object) {
+                transformControl.detach();
+                btnMoveSel.classList.replace('bg-blue-800', 'bg-blue-600');
+                btnMoveSel.classList.replace('hover:bg-blue-700', 'hover:bg-blue-500');
+                btnMoveSel.textContent = "Activate Transform Gizmo";
+                recalculateBaseStats();
+            }
+        }
+
+        // --- Mouse System ---
+        function setupMouseEvents() {
+            container.addEventListener('pointerdown', (e) => {
+                if(!isEraserMode) return;
+                
+                if (isGizmoDragging) return;
+                if (transformControl.axis !== null) return; 
+
+                const rect = container.getBoundingClientRect();
+                
+                if(trimMode === 'brush') {
+                    saveHistoryState();
+                    isDragging = true;
+                    handleBrushErase();
+                } else if (trimMode === 'select') {
+                    pointerDownPos = { x: e.clientX, y: e.clientY };
+                    
+                    if (e.shiftKey) {
+                        isMarqueeSelecting = true;
+                        controls.enabled = false;
+                        marqueeStart.set(e.clientX - rect.left, e.clientY - rect.top);
+                        marqueeEnd.copy(marqueeStart);
+                        updateSelectionBoxUI();
+                    }
+                }
+            });
+
+            container.addEventListener('pointermove', (e) => {
+                if(!isEraserMode) return;
+                if (isGizmoDragging) return;
+
+                const rect = container.getBoundingClientRect();
+                mouse.set(((e.clientX - rect.left) / rect.width) * 2 - 1, -((e.clientY - rect.top) / rect.height) * 2 + 1);
+                raycaster.setFromCamera(mouse, camera);
+
+                if (isMarqueeSelecting) {
+                    marqueeEnd.set(e.clientX - rect.left, e.clientY - rect.top);
+                    updateSelectionBoxUI();
+                    return;
+                }
+
+                if (trimMode === 'brush') {
+                    const intersects = raycaster.intersectObject(currentModel, true);
+                    const visibleIntersects = intersects.filter(hit => !hit.object.userData.isHidden);
+                    
+                    if (visibleIntersects.length > 0) {
+                        brushMesh.position.copy(visibleIntersects[0].point);
+                        brushMesh.visible = true;
+                        brushMesh.scale.setScalar((brushSlider.value / 100) * (4 / maxModelDimension));
+                        if(isDragging) handleBrushErase();
+                    } else brushMesh.visible = false;
+                } else if (trimMode === 'select' && transformControl.axis === null) {
+                    const intersects = raycaster.intersectObject(currentModel, true);
+                    const visibleIntersects = intersects.filter(hit => !hit.object.userData.isHidden);
+                    updateHoverVisual(visibleIntersects.length > 0 ? visibleIntersects[0] : null);
+                } else {
+                    hoverMesh.visible = false;
+                }
+            });
+
+            container.addEventListener('pointerup', (e) => {
+                if(!isEraserMode) return;
+                if(isGizmoDragging) return;
+                
+                if(trimMode === 'brush') {
+                    isDragging = false;
+                } else if (trimMode === 'select') {
+                    if (isMarqueeSelecting) {
+                        isMarqueeSelecting = false;
+                        selectionBox.classList.add('hidden');
+                        controls.enabled = true;
+                        
+                        if (marqueeStart.distanceTo(marqueeEnd) > 5) {
+                            saveHistoryState();
+                            performMarqueeSelection();
+                        } else {
+                            saveHistoryState();
+                            handleSelectClick(e);
+                        }
+                    } else {
+                        if (Math.abs(e.clientX - pointerDownPos.x) < 5 && Math.abs(e.clientY - pointerDownPos.y) < 5) {
+                            if(transformControl.axis === null) {
+                                saveHistoryState();
+                                handleSelectClick(e);
+                            }
+                        }
+                    }
+                }
+            });
+
+            container.addEventListener('wheel', (e) => {
+                if(!isEraserMode || trimMode !== 'brush') return;
+                e.preventDefault();
+                let currentVal = parseInt(brushSlider.value);
+                let newVal = Math.max(1, Math.min(100, currentVal + (e.deltaY < 0 ? 5 : -5)));
+                brushSlider.value = newVal;
+                brushSizeVal.textContent = newVal + '%';
+                brushMesh.scale.setScalar((newVal / 100) * (4 / maxModelDimension));
+            }, { passive: false });
+        }
+
+        function updateSelectionBoxUI() {
+            selectionBox.classList.remove('hidden');
+            const left = Math.min(marqueeStart.x, marqueeEnd.x);
+            const top = Math.min(marqueeStart.y, marqueeEnd.y);
+            const width = Math.abs(marqueeStart.x - marqueeEnd.x);
+            const height = Math.abs(marqueeStart.y - marqueeEnd.y);
+
+            selectionBox.style.left = left + 'px';
+            selectionBox.style.top = top + 'px';
+            selectionBox.style.width = width + 'px';
+            selectionBox.style.height = height + 'px';
+        }
+
+        function performMarqueeSelection() {
+            if (!currentModel) return;
+            const rect = container.getBoundingClientRect();
+            const minX = Math.min(marqueeStart.x, marqueeEnd.x) / rect.width * 2 - 1;
+            const maxX = Math.max(marqueeStart.x, marqueeEnd.x) / rect.width * 2 - 1;
+            const minY = -(Math.max(marqueeStart.y, marqueeEnd.y) / rect.height * 2 - 1);
+            const maxY = -(Math.min(marqueeStart.y, marqueeEnd.y) / rect.height * 2 - 1);
+
+            let selectedAny = false;
+
+            currentModel.traverse((child) => {
+                if (child.isMesh && child.userData.originalGeometry && !child.userData.isHidden) {
+                    const origGeom = child.userData.originalGeometry;
+                    const pos = origGeom.attributes.position;
+                    const index = origGeom.index;
+                    const matrix = child.matrixWorld;
+                    const deleted = child.userData.deletedFaces;
+
+                    const vA = new THREE.Vector3(), vB = new THREE.Vector3(), vC = new THREE.Vector3();
+
+                    for (let i = 0; i < index.count; i += 3) {
+                        const faceIdx = i / 3;
+                        if (deleted.has(faceIdx)) continue;
+
+                        vA.fromBufferAttribute(pos, index.getX(i)).applyMatrix4(matrix).project(camera);
+                        vB.fromBufferAttribute(pos, index.getX(i+1)).applyMatrix4(matrix).project(camera);
+                        vC.fromBufferAttribute(pos, index.getX(i+2)).applyMatrix4(matrix).project(camera);
+
+                        const isInside = (v) => v.x >= minX && v.x <= maxX && v.y >= minY && v.y <= maxY && v.z <= 1;
+
+                        if (isInside(vA) || isInside(vB) || isInside(vC)) {
+                            child.userData.selectedFaces.add(faceIdx);
+                            selectedAny = true;
+                        }
+                    }
+                }
+            });
+
+            if (selectedAny) updateSelectionVisuals();
+        }
+
+        function updateHoverVisual(hit) {
+            if (!hit || hit.object.userData.isHidden) { hoverMesh.visible = false; return; }
+            const child = hit.object;
+            const faceIdx = hit.faceIndex;
+            if (faceIdx === undefined) return;
+            
+            const origGeom = child.userData.originalGeometry;
+            if (!origGeom || child.userData.deletedFaces.has(faceIdx)) return;
+            
+            const pos = origGeom.attributes.position;
+            const index = origGeom.index;
+            const a = index.getX(faceIdx * 3), b = index.getX(faceIdx * 3 + 1), c = index.getX(faceIdx * 3 + 2);
+            
+            const vA = new THREE.Vector3().fromBufferAttribute(pos, a).applyMatrix4(child.matrixWorld);
+            const vB = new THREE.Vector3().fromBufferAttribute(pos, b).applyMatrix4(child.matrixWorld);
+            const vC = new THREE.Vector3().fromBufferAttribute(pos, c).applyMatrix4(child.matrixWorld);
+            
+            hoverMesh.geometry.setAttribute('position', new THREE.Float32BufferAttribute([vA.x,vA.y,vA.z, vB.x,vB.y,vB.z, vC.x,vC.y,vC.z], 3));
+            hoverMesh.visible = true;
+        }
+
+        function updateSelectionVisuals() {
+            if (!isEraserMode) { selectionMesh.visible = false; return; }
+            const positions = [];
+            currentModel.traverse((child) => {
+                if (child.isMesh && child.userData.originalGeometry && child.userData.selectedFaces && !child.userData.isHidden) {
+                    const pos = child.userData.originalGeometry.attributes.position;
+                    const index = child.userData.originalGeometry.index;
+                    const matrix = child.matrixWorld;
+                    child.userData.selectedFaces.forEach(faceIdx => {
+                        const a = index.getX(faceIdx * 3), b = index.getX(faceIdx * 3 + 1), c = index.getX(faceIdx * 3 + 2);
+                        const vA = new THREE.Vector3().fromBufferAttribute(pos, a).applyMatrix4(matrix);
+                        const vB = new THREE.Vector3().fromBufferAttribute(pos, b).applyMatrix4(matrix);
+                        const vC = new THREE.Vector3().fromBufferAttribute(pos, c).applyMatrix4(matrix);
+                        positions.push(vA.x, vA.y, vA.z, vB.x, vB.y, vB.z, vC.x, vC.y, vC.z);
+                    });
+                }
+            });
+            if (positions.length > 0) {
+                selectionMesh.geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+                selectionMesh.visible = true;
+            } else selectionMesh.visible = false;
+        }
+
+        function handleSelectClick(e) {
+            const intersects = raycaster.intersectObject(currentModel, true);
+            const visibleIntersects = intersects.filter(hit => !hit.object.userData.isHidden);
+
+            if (visibleIntersects.length > 0) {
+                const child = visibleIntersects[0].object;
+                const faceIdx = visibleIntersects[0].faceIndex;
+                if (faceIdx !== undefined && !child.userData.deletedFaces.has(faceIdx)) {
+                    if (e.shiftKey) {
+                        if (child.userData.selectedFaces.has(faceIdx)) child.userData.selectedFaces.delete(faceIdx);
+                        else child.userData.selectedFaces.add(faceIdx);
+                    } else {
+                        currentModel.traverse(c => { if(c.userData.selectedFaces) c.userData.selectedFaces.clear(); });
+                        child.userData.selectedFaces.add(faceIdx);
+                    }
+                    updateSelectionVisuals();
+                }
+            } else {
+                if (!e.shiftKey) {
+                    currentModel.traverse(c => { if(c.userData.selectedFaces) c.userData.selectedFaces.clear(); });
+                    updateSelectionVisuals();
+                    disableMoveGizmo();
+                }
+            }
+        }
+
+        function deleteSelectedFaces() {
+            let deletedAny = false;
+            saveHistoryState();
+            disableMoveGizmo();
+            
+            currentModel.traverse((child) => {
+                if (child.isMesh && child.userData.selectedFaces && child.userData.selectedFaces.size > 0 && !child.userData.isHidden) {
+                    child.userData.selectedFaces.forEach(faceIdx => child.userData.deletedFaces.add(faceIdx));
+                    child.userData.selectedFaces.clear();
+                    deletedAny = true;
+                }
+            });
+            if (deletedAny) {
+                updateSelectionVisuals();
+                hoverMesh.visible = false;
+                resetGeometryForErasing();
+                recalculateBaseStats();
+            } else {
+                historyStack.pop();
+                updateUndoUI();
+            }
+        }
+
+        function handleBrushErase() {
+            if(!brushMesh.visible) return;
+            const point = brushMesh.position;
+            const radiusSq = Math.pow(brushMesh.scale.x, 2);
+            let erasedSomething = false;
+
+            currentModel.traverse((child) => {
+                if (child.isMesh && child.userData.originalGeometry && !child.userData.isHidden) {
+                    const origGeom = child.userData.originalGeometry;
+                    const pos = origGeom.attributes.position;
+                    const index = origGeom.index;
+                    const matrix = child.matrixWorld;
+                    const deleted = child.userData.deletedFaces;
+                    
+                    const vA = new THREE.Vector3(), vB = new THREE.Vector3(), vC = new THREE.Vector3();
+                    let localModified = false;
+
+                    for (let i = 0; i < index.count; i += 3) {
+                        const faceIdx = i / 3;
+                        if (deleted.has(faceIdx)) continue;
+                        
+                        vA.fromBufferAttribute(pos, index.getX(i)).applyMatrix4(matrix);
+                        vB.fromBufferAttribute(pos, index.getX(i+1)).applyMatrix4(matrix);
+                        vC.fromBufferAttribute(pos, index.getX(i+2)).applyMatrix4(matrix);
+
+                        if (vA.distanceToSquared(point) < radiusSq || vB.distanceToSquared(point) < radiusSq || vC.distanceToSquared(point) < radiusSq) {
+                            deleted.add(faceIdx);
+                            localModified = true;
+                            erasedSomething = true;
+                            if (child.userData.selectedFaces) child.userData.selectedFaces.delete(faceIdx);
+                        }
+                    }
+
+                    if (localModified) {
+                        const newIndices = [];
+                        for (let i = 0; i < index.count; i += 3) {
+                            if (!deleted.has(i / 3)) newIndices.push(index.getX(i), index.getX(i+1), index.getX(i+2));
+                        }
+                        child.geometry.setIndex(newIndices);
+                    }
+                }
+            });
+
+            if(erasedSomething) {
+                updateLiveStats();
+                updateSelectionVisuals();
+            }
+        }
+
+        function resetGeometryForErasing() {
+            currentModel.traverse((child) => {
+                if(child.isMesh && child.userData.originalGeometry) {
+                    const origGeom = child.userData.originalGeometry.clone();
+                    const origIndex = origGeom.index;
+                    const deleted = child.userData.deletedFaces;
+                    const newIndices = [];
+                    for (let i = 0; i < origIndex.count; i += 3) {
+                        if (!deleted.has(i / 3)) newIndices.push(origIndex.getX(i), origIndex.getX(i+1), origIndex.getX(i+2));
+                    }
+                    origGeom.setIndex(newIndices);
+                    if(child.geometry !== child.userData.originalGeometry) child.geometry.dispose();
+                    child.geometry = origGeom;
+                }
+            });
+            updateLiveStats();
+        }
+
+        // --- Simplification Algorithm (Decimation) ---
+        function getCleanBaseGeometry(child) {
+            const orig = child.userData.originalGeometry;
+            const deleted = child.userData.deletedFaces;
+            
+            let cleanGeom;
+            
+            if (!deleted || deleted.size === 0) {
+                 cleanGeom = orig.clone();
+            } else {
+                const pos = orig.attributes.position;
+                const norm = orig.attributes.normal;
+                const index = orig.index;
+                const map = new Map();
+                let newIdx = 0;
+                const newPos = [], newNorm = [], newIndices = [];
+                
+                for(let i=0; i<index.count; i+=3) {
+                    if(!deleted.has(i / 3)) {
+                        const a = index.getX(i), b = index.getX(i+1), c = index.getX(i+2);
+                        [a, b, c].forEach(idx => {
+                            if(!map.has(idx)) {
+                                map.set(idx, newIdx++);
+                                newPos.push(pos.getX(idx), pos.getY(idx), pos.getZ(idx));
+                                if(norm) newNorm.push(norm.getX(idx), norm.getY(idx), norm.getZ(idx));
+                            }
+                        });
+                        newIndices.push(map.get(a), map.get(b), map.get(c));
+                    }
+                }
+                cleanGeom = new THREE.BufferGeometry();
+                cleanGeom.setAttribute('position', new THREE.Float32BufferAttribute(newPos, 3));
+                if(norm) cleanGeom.setAttribute('normal', new THREE.Float32BufferAttribute(newNorm, 3));
+                cleanGeom.setIndex(newIndices);
+            }
+            
+            try {
+                cleanGeom = BufferGeometryUtils.mergeVertices(cleanGeom, 1e-3);
+                cleanGeom.computeVertexNormals();
+            } catch (e) { console.warn("Pre-merge failed", e); }
+            
+            return cleanGeom;
+        }
+
+        function debounce(func, wait) {
+            let timeout;
+            return function(...args) { clearTimeout(timeout); timeout = setTimeout(() => func.apply(this, args), wait); };
+        }
+
+        const applySimplification = (targetTris) => {
+            if (!currentModel || isEraserMode) return;
+            showLoading(true, "DECIMATING MESH...");
+
+            setTimeout(() => {
+                if (targetTris >= baseStats.triangles) resetGeometryForErasing(); 
+                else {
+                    const reductionRatio = targetTris / baseStats.triangles;
+                    const modifier = new SimplifyModifier();
+
+                    currentModel.traverse((child) => {
+                        if (child.isMesh && child.userData.originalGeometry && !child.userData.isHidden) {
+                            try {
+                                const cleanGeom = getCleanBaseGeometry(child);
+                                const currentVertices = cleanGeom.attributes.position.count;
+                                const oldGeom = child.geometry;
+                                const targetMeshVerts = Math.max(3, Math.floor(currentVertices * reductionRatio));
+                                const countToRemove = currentVertices - targetMeshVerts;
+
+                                if (countToRemove > 0) {
+                                    const simplifiedGeom = modifier.modify(cleanGeom, countToRemove);
+                                    simplifiedGeom.computeVertexNormals();
+                                    child.geometry = simplifiedGeom;
+                                } else child.geometry = cleanGeom;
+                                
+                                if (oldGeom !== child.userData.originalGeometry) oldGeom.dispose();
+                            } catch(e) { console.warn("Warning: Complex topology ignored during decimation.", e); }
+                        }
+                    });
+                }
+                updateLiveStats();
+                showLoading(false);
+            }, 50);
+        };
+
+        const debouncedSimplify = debounce((val) => applySimplification(val), 300);
+
+        simplifySlider.addEventListener('input', (e) => {
+            const val = parseInt(e.target.value);
+            targetVal.textContent = val.toLocaleString();
+            debouncedSimplify(val);
+        });
+
+        function showLoading(show, text="PROCESSING...") {
+            loadingText.textContent = text;
+            if (show) loadingOverlay.classList.remove('hidden');
+            else loadingOverlay.classList.add('hidden');
+        }
+
+        // --- Export LFS .OBJ ---
+        btnConvert.addEventListener('click', () => {
+            if (!currentModel) return;
+            
+            const target = targetTypeSelect.value;
+            if (modelStats.vertices > LIMITS[target].verts || modelStats.triangles > LIMITS[target].polys) {
+                const confirmExport = confirm(`Warning: Model exceeds strict limits for LFS ${target}. It may crash or fail to import. Export anyway?`);
+                if (!confirmExport) return;
+            }
+
+            showLoading(true, "GENERATING LFS .OBJ...");
+            setTimeout(() => {
+                const objBlob = generateOBJBlob(currentModel);
+                downloadBlob(objBlob, `${originalFileName}.obj`);
+                showLoading(false);
+            }, 100);
+        });
+
+        function generateOBJBlob(modelScene) {
+            let output = "# Exported for Live for Speed Editor\n# Coordinate System: Y forward, Z up\n\n";
+            let globalVertexOffset = 1;
+
+            modelContainer.updateMatrixWorld(true);
+            
+            modelScene.traverse((child) => {
+                if (child.isMesh && child.geometry && child.geometry.index && !child.userData.isHidden) {
+                    const geom = child.geometry;
+                    const pos = geom.attributes.position;
+                    const norm = geom.attributes.normal;
+                    const index = geom.index;
+                    
+                    output += `o ${child.name || 'Mesh'}\n`;
+                    const matrix = child.matrixWorld;
+                    const normalMatrix = new THREE.Matrix3().getNormalMatrix(matrix);
+                    
+                    const usedIndices = new Set();
+                    for (let i = 0; i < index.count; i++) usedIndices.add(index.getX(i));
+                    
+                    const indexMap = new Map();
+                    let localNewIndex = 0;
+                    const v = new THREE.Vector3(), n = new THREE.Vector3();
+                    
+                    for (let i = 0; i < pos.count; i++) {
+                        if (usedIndices.has(i)) {
+                            indexMap.set(i, globalVertexOffset + localNewIndex);
+                            localNewIndex++;
+                            v.fromBufferAttribute(pos, i).applyMatrix4(matrix); 
+                            output += `v ${v.x.toFixed(6)} ${-v.z.toFixed(6)} ${v.y.toFixed(6)}\n`;
+                        }
+                    }
+                    
+                    if (norm) {
+                        for (let i = 0; i < pos.count; i++) {
+                            if (usedIndices.has(i)) {
+                                n.fromBufferAttribute(norm, i).applyMatrix3(normalMatrix).normalize();
+                                output += `vn ${n.x.toFixed(6)} ${-n.z.toFixed(6)} ${n.y.toFixed(6)}\n`;
+                            }
+                        }
+                    }
+                    
+                    for (let i = 0; i < index.count; i += 3) {
+                        const a = indexMap.get(index.getX(i)), b = indexMap.get(index.getX(i+1)), c = indexMap.get(index.getX(i+2));
+                        if (norm) output += `f ${a}//${a} ${b}//${b} ${c}//${c}\n`;
+                        else output += `f ${a} ${b} ${c}\n`;
+                    }
+                    globalVertexOffset += usedIndices.size;
+                    output += '\n';
+                }
+            });
+            return new Blob([output], { type: 'text/plain' });
+        }
+
+        function downloadBlob(blob, filename) {
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.style.display = 'none';
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            window.URL.revokeObjectURL(url);
+            document.body.removeChild(a);
+        }
+
+        initThreeJS();
+
+    </script>
+</body>
+</html>
