@@ -9,20 +9,20 @@
         body { margin: 0; overflow: hidden; background-color: #030712; color: #D1D5DB; user-select: none; }
         #canvas-container { width: 100%; height: 100%; display: block; outline: none; }
         
-        /* Custom Scrollbar */
+        /* Custom Scrollbar - Black/Blue Theme */
         .custom-scrollbar::-webkit-scrollbar { width: 6px; }
-        .custom-scrollbar::-webkit-scrollbar-track { background: #111827; }
-        .custom-scrollbar::-webkit-scrollbar-thumb { background: #374151; border-radius: 3px; }
-        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #4B5563; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: #09090b; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #1e3a8a; border-radius: 3px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #2563eb; }
         
         /* Cursors */
         .cursor-select { cursor: crosshair !important; }
-        .cursor-lasso { cursor: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="white" viewBox="0 0 16 16"><path d="M8 1a7 7 0 1 0 0 14A7 7 0 0 0 8 1zm0 1.5a5.5 5.5 0 1 1 0 11 5.5 5.5 0 0 1 0-11z"/></svg>') 8 8, crosshair !important; }
-        .cursor-wand { cursor: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="white" viewBox="0 0 16 16"><path d="M8.5 1.5a.5.5 0 0 1 1 0v2.293l1.146-1.147a.5.5 0 0 1 .708.708L10.207 4.5h2.293a.5.5 0 0 1 0 1h-2.293l1.147 1.146a.5.5 0 0 1-.708.708L9.5 6.207V8.5a.5.5 0 0 1-1 0V6.207L7.354 7.354a.5.5 0 1 1-.708-.708L7.793 5.5H5.5a.5.5 0 0 1 0-1h2.293L6.646 3.354a.5.5 0 1 1 .708-.708L8.5 3.793V1.5zM2.146 14.854a.5.5 0 0 1-.708-.708l11-11a.5.5 0 0 1 .708.708l-11 11z"/></svg>') 0 16, crosshair !important; }
+        .cursor-lasso { cursor: crosshair !important; }
+        .cursor-wand { cursor: crosshair !important; }
         
         /* Hierarchy Tree Styles */
-        .tree-item { display: flex; align-items: center; justify-content: space-between; padding: 4px 6px; border-radius: 4px; margin-bottom: 2px; border: 1px solid transparent; background: #111827; }
-        .tree-item:hover { background-color: #1F2937; }
+        .tree-item { display: flex; align-items: center; justify-content: space-between; padding: 4px 6px; border-radius: 4px; margin-bottom: 2px; border: 1px solid transparent; background: #09090b; }
+        .tree-item:hover { background-color: #172554; }
         .tree-item.selected { background-color: #1E3A8A; border-color: #2563EB; }
         .tree-item-name { cursor: pointer; flex-grow: 1; font-size: 11px; color: #D1D5DB; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: 8px;}
         .tree-item-name:hover { color: #60A5FA; }
@@ -31,11 +31,15 @@
         .visibility-hidden { color: #4B5563; }
         
         /* Toolbar buttons */
-        .tool-btn { @apply w-10 h-10 flex items-center justify-center rounded-lg bg-gray-900 text-gray-400 hover:bg-gray-800 hover:text-white transition-all border border-gray-800; }
-        .tool-btn.active { @apply bg-blue-600 text-white border-blue-500 shadow-[0_0_10px_rgba(37,99,235,0.4)]; }
+        .tool-btn { @apply w-10 h-10 flex items-center justify-center rounded-lg bg-[#09090b] text-gray-400 hover:bg-[#172554] hover:text-white transition-all border border-gray-800; }
+        .tool-btn.active { @apply bg-blue-600 text-white border-blue-400 shadow-[0_0_12px_rgba(37,99,235,0.5)]; }
         
         /* Canvas for Lasso */
         #lasso-canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 20; }
+        
+        /* Modal Animation */
+        .modal-enter { animation: fadeIn 0.3s ease-out forwards; }
+        @keyframes fadeIn { from { opacity: 0; transform: scale(0.95); } to { opacity: 1; transform: scale(1); } }
     </style>
     <!-- Import Maps for Three.js -->
     <script type="importmap">
@@ -47,173 +51,236 @@
         }
     </script>
 </head>
-<body class="flex h-screen font-sans text-xs">
+<body class="flex h-screen font-sans text-xs flex-col">
 
-    <!-- LEFT PANEL: Tool Shelf (Blender Style) -->
-    <div class="w-16 bg-gray-950 border-r border-gray-800 flex flex-col items-center py-4 gap-3 z-10 shadow-xl">
-        
-        <div class="text-[9px] text-gray-500 font-bold mb-1 tracking-widest">TOOLS</div>
-        
-        <button id="tool-select" class="tool-btn active" title="Select (V)">
-            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 15l-2 5L9 9l11 4-5 2zm0 0l5 5M7.188 2.239l.777 2.897M5.136 7.965l-2.898-.777M13.95 4.05l-2.122 2.122m-5.657 5.656l-2.12 2.122"></path></svg>
-        </button>
-        <button id="tool-box" class="tool-btn" title="Box / Marquee (M)">
-            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4h4v4H4zM16 4h4v4h-4zM4 16h4v4H4zM16 16h4v4h-4zM8 6h8M8 18h8M6 8v8M18 8v8"></path></svg>
-        </button>
-        <button id="tool-lasso" class="tool-btn" title="Lasso Select (L)">
-            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A4 4 0 002 9v11a2 2 0 002 2h10a2 2 0 002-2v-5.655l-1.248-.832zM16 3a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
-        </button>
-        <button id="tool-wand" class="tool-btn" title="Magic Wand / Linked Faces (W)">
-            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z"></path></svg>
-        </button>
-
-        <div class="w-8 h-px bg-gray-800 my-2"></div>
-        <div class="text-[9px] text-gray-500 font-bold mb-1 tracking-widest">GIZMO</div>
-
-        <button id="gizmo-translate" class="tool-btn active" title="Move">
-            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4"></path></svg>
-        </button>
-        <button id="gizmo-rotate" class="tool-btn" title="Rotate">
-            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
-        </button>
-        <button id="gizmo-scale" class="tool-btn" title="Scale">
-            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4"></path></svg>
-        </button>
-
-    </div>
-
-    <!-- CENTER PANEL: 3D Viewport -->
-    <div class="flex-grow relative bg-gray-950 flex flex-col">
-        <!-- Top Toolbar over Viewport -->
-        <div class="absolute top-0 left-0 w-full p-3 pointer-events-none flex justify-between z-10">
-            <div class="flex gap-2 pointer-events-auto">
-                <label for="file-upload" class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-1.5 rounded shadow cursor-pointer font-bold flex items-center gap-2">
-                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path></svg>
-                    Import GLB
-                </label>
-                <input id="file-upload" type="file" class="hidden" accept=".glb" />
-                
-                <button id="btn-undo" class="bg-gray-800 border border-gray-700 hover:bg-gray-700 text-white px-3 py-1.5 rounded shadow opacity-50 cursor-not-allowed transition-all" title="Undo (Ctrl+Z)">
-                    Undo
-                </button>
-                <button id="btn-wireframe" class="bg-gray-800 border border-gray-700 hover:bg-gray-700 text-white px-3 py-1.5 rounded shadow transition-all">
-                    Wireframe
-                </button>
-                
-                <!-- Background Color Picker -->
-                <div class="flex items-center gap-2 bg-gray-800 border border-gray-700 px-2 py-1.5 rounded shadow">
-                    <span class="text-[10px] text-gray-400">BG:</span>
-                    <input type="color" id="bg-color" value="#111827" class="w-5 h-5 rounded cursor-pointer border-0 bg-transparent p-0">
-                </div>
-            </div>
-
-            <!-- Viewport Legends -->
-            <div class="bg-gray-900/80 border border-gray-800 p-2 rounded backdrop-blur-sm pointer-events-auto text-[10px]">
-                <div class="grid grid-cols-2 gap-x-4 gap-y-1 text-gray-400">
-                    <p><span class="text-blue-400 font-bold">NUM 1</span> Front</p>
-                    <p><span class="text-blue-400 font-bold">NUM 3</span> Right</p>
-                    <p><span class="text-blue-400 font-bold">NUM 7</span> Top</p>
-                    <p><span class="text-blue-400 font-bold">NUM 9</span> Bottom</p>
-                </div>
-            </div>
-        </div>
-
-        <canvas id="lasso-canvas"></canvas>
-        <div id="selection-box" class="hidden absolute border border-blue-500 bg-blue-500/20 pointer-events-none z-30"></div>
-        <div id="canvas-container" tabindex="0" class="flex-grow w-full h-full outline-none"></div>
-
-        <!-- Loading Overlay -->
-        <div id="loading-overlay" class="absolute inset-0 z-40 bg-gray-950/90 flex items-center justify-center hidden backdrop-blur-sm">
-            <div class="flex flex-col items-center">
-                <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mb-4"></div>
-                <p id="loading-text" class="text-blue-400 font-bold tracking-widest uppercase">PROCESSING...</p>
-            </div>
-        </div>
-    </div>
-
-    <!-- RIGHT PANEL: Outliner & Properties -->
-    <div class="w-80 bg-gray-950 border-l border-gray-800 flex flex-col z-10 shadow-xl overflow-y-auto custom-scrollbar">
-        
-        <!-- Outliner / Hierarchy -->
-        <div class="p-4 border-b border-gray-800 flex-grow max-h-[50vh] flex flex-col">
-            <div class="flex justify-between items-end mb-3">
-                <h2 class="text-sm font-bold text-gray-200 flex items-center gap-2">
-                    <svg class="w-4 h-4 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path></svg>
-                    Outliner
-                </h2>
-                <span id="filename-display" class="text-[10px] text-gray-500 truncate max-w-[120px]">No model</span>
-            </div>
+    <!-- INTRO SPLASH SCREEN -->
+    <div id="intro-modal" class="fixed inset-0 z-50 bg-black/90 flex items-center justify-center backdrop-blur-md">
+        <div class="bg-gray-900 border border-blue-900 rounded-xl shadow-2xl p-8 max-w-2xl modal-enter relative overflow-hidden">
+            <div class="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-blue-600 to-emerald-500"></div>
+            <h1 class="text-3xl font-bold text-white mb-2">Bem-vindo ao Modder's GLB Converter</h1>
+            <p class="text-gray-400 text-sm mb-6">A ferramenta definitiva no navegador para preparar e otimizar modelos 3D para engines clássicas (como Live for Speed).</p>
             
-            <div id="hierarchy-list" class="flex-grow overflow-y-auto custom-scrollbar bg-gray-900 rounded border border-gray-800 p-1 space-y-0.5">
-                <div class="text-gray-600 text-center italic py-4">Import a model first</div>
-            </div>
-
-            <!-- Modding Actions -->
-            <div class="grid grid-cols-2 gap-2 mt-3">
-                <button id="btn-action-extract" class="py-1.5 bg-gray-800 hover:bg-gray-700 border border-gray-700 text-gray-300 rounded shadow transition-all">Extract</button>
-                <button id="btn-action-duplicate" class="py-1.5 bg-gray-800 hover:bg-gray-700 border border-gray-700 text-gray-300 rounded shadow transition-all">Duplicate</button>
-                <button id="btn-obj-mirror" class="py-1.5 bg-gray-800 hover:bg-gray-700 border border-gray-700 text-gray-300 rounded shadow transition-all">Mirror (X)</button>
-                <button id="btn-obj-center" class="py-1.5 bg-gray-800 hover:bg-gray-700 border border-gray-700 text-gray-300 rounded shadow transition-all">Center Pivot</button>
-            </div>
-            <div class="flex gap-2 mt-2">
-                <button id="btn-clear-sel" class="flex-1 py-1.5 bg-gray-800 hover:bg-gray-700 border border-gray-700 text-gray-400 rounded">Clear Sel.</button>
-                <button id="btn-delete-sel" class="flex-1 py-1.5 bg-red-900/30 hover:bg-red-800/50 border border-red-900/50 text-red-400 rounded">Delete (Del)</button>
-            </div>
-        </div>
-
-        <!-- Properties / Export -->
-        <div class="p-4 border-t border-gray-800 bg-gray-900 flex-grow flex flex-col justify-between">
-            
-            <div class="space-y-4">
-                <h2 class="text-sm font-bold text-gray-200 flex items-center gap-2">
-                    <svg class="w-4 h-4 text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"></path></svg>
-                    Properties
-                </h2>
-                
-                <!-- Target Profiles -->
-                <div>
-                    <label class="text-[10px] text-gray-500 uppercase tracking-wider mb-1 block">Export Target Profile</label>
-                    <select id="target-type" class="w-full bg-gray-950 border border-gray-800 text-gray-300 text-xs rounded p-2 focus:border-blue-500 focus:outline-none">
-                        <option value="full">Target: Full Poly (Original / No Limits)</option>
-                        <option value="car">Target: Car Body (Max 32k Verts)</option>
-                        <option value="wheel" selected>Target: Wheel (Max 4,240 Polys)</option>
-                    </select>
+            <div class="grid grid-cols-2 gap-6 mb-8 text-sm">
+                <div class="space-y-3">
+                    <h3 class="text-blue-400 font-bold border-b border-gray-800 pb-1">Navegação da Câmera</h3>
+                    <ul class="text-gray-300 space-y-1">
+                        <li><kbd class="bg-gray-800 px-1.5 rounded text-xs text-blue-300">Num 1</kbd> Visão Frontal</li>
+                        <li><kbd class="bg-gray-800 px-1.5 rounded text-xs text-blue-300">Num 3</kbd> Visão Lateral Direita</li>
+                        <li><kbd class="bg-gray-800 px-1.5 rounded text-xs text-blue-300">Num 7</kbd> Visão do Topo</li>
+                        <li><kbd class="bg-gray-800 px-1.5 rounded text-xs text-blue-300">Num 9</kbd> Visão Inferior</li>
+                        <li><kbd class="bg-gray-800 px-1.5 rounded text-xs text-blue-300">Botão Esquerdo</kbd> Rotacionar Câmera</li>
+                        <li><kbd class="bg-gray-800 px-1.5 rounded text-xs text-blue-300">Botão Direito</kbd> Mover (Pan)</li>
+                    </ul>
                 </div>
-
-                <!-- Stats -->
-                <div class="bg-gray-950 rounded border border-gray-800 p-2 text-xs">
-                    <p class="flex justify-between items-center mb-1">
-                        <span class="text-gray-500">Vertices:</span>
-                        <span id="stat-verts" class="font-mono text-gray-300">0</span>
-                    </p>
-                    <p class="flex justify-between items-center">
-                        <span class="text-gray-500">Triangles:</span>
-                        <span id="stat-tris" class="font-mono text-gray-300">0</span>
-                    </p>
-                    <div id="poly-warning" class="hidden mt-2 p-1 bg-red-900/30 border border-red-900/50 text-red-400 text-[9px] text-center rounded">
-                        EXCEEDS ENGINE LIMITS
-                    </div>
-                </div>
-
-                <!-- Manual Decimation (Prevents freezing) -->
-                <div id="decimate-block" class="bg-gray-950 rounded border border-gray-800 p-3">
-                    <div class="flex justify-between text-[10px] mb-2">
-                        <span class="text-gray-400">Target Polys:</span>
-                        <span id="target-val" class="text-blue-400 font-mono font-bold">...</span>
-                    </div>
-                    <input type="range" id="simplify-slider" min="100" max="32768" value="32000" class="w-full accent-blue-500 h-1 mb-3">
-                    <button id="btn-apply-decimate" class="w-full py-1.5 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded shadow transition-all disabled:opacity-50 disabled:cursor-not-allowed">
-                        Apply Optimization
-                    </button>
-                    <p class="text-[9px] text-gray-500 mt-2 text-center leading-tight">Decimation is applied manually to prevent browser freezing.</p>
+                <div class="space-y-3">
+                    <h3 class="text-blue-400 font-bold border-b border-gray-800 pb-1">Atalhos de Ferramentas</h3>
+                    <ul class="text-gray-300 space-y-1">
+                        <li><kbd class="bg-gray-800 px-1.5 rounded text-xs text-emerald-300">V</kbd> Seleção Padrão (Click)</li>
+                        <li><kbd class="bg-gray-800 px-1.5 rounded text-xs text-emerald-300">M</kbd> Seleção Retangular (Marquee)</li>
+                        <li><kbd class="bg-gray-800 px-1.5 rounded text-xs text-emerald-300">L</kbd> Laço à mão livre (Lasso)</li>
+                        <li><kbd class="bg-gray-800 px-1.5 rounded text-xs text-emerald-300">W</kbd> Varinha Mágica (Peças interligadas)</li>
+                        <li><kbd class="bg-gray-800 px-1.5 rounded text-xs text-red-300">Del</kbd> Apagar Polígonos Selecionados</li>
+                        <li><kbd class="bg-gray-800 px-1.5 rounded text-xs text-yellow-300">Ctrl+Z</kbd> Desfazer Ação</li>
+                    </ul>
                 </div>
             </div>
 
-            <!-- Export -->
-            <button id="btn-convert" disabled class="w-full py-3 mt-4 bg-gray-800 text-gray-500 font-bold rounded-lg cursor-not-allowed transition-all border border-gray-700">
-                Export LFS .OBJ
+            <button id="btn-start-app" class="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 rounded-lg shadow-lg transition-all text-base">
+                Começar a Editar Projetos
             </button>
         </div>
+    </div>
+
+    <!-- PROJECTS MODAL -->
+    <div id="projects-modal" class="hidden fixed inset-0 z-50 bg-black/80 flex items-center justify-center backdrop-blur-sm">
+        <div class="bg-gray-900 border border-gray-700 rounded-lg shadow-2xl p-6 w-96 modal-enter">
+            <h2 class="text-xl font-bold text-white mb-4">Local Workspaces</h2>
+            <p class="text-xs text-gray-400 mb-4">Os projetos são salvos no cache do seu navegador.</p>
+            
+            <div id="projects-list" class="max-h-60 overflow-y-auto custom-scrollbar space-y-2 mb-4 bg-gray-950 p-2 rounded border border-gray-800">
+                <!-- List of projects goes here -->
+            </div>
+
+            <div class="flex gap-2">
+                <button id="btn-save-project" class="flex-1 bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-2 rounded transition-all">Save Current</button>
+                <button id="btn-close-projects" class="flex-1 bg-gray-700 hover:bg-gray-600 text-white font-bold py-2 rounded transition-all">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MAIN UI WRAPPER -->
+    <div class="flex flex-grow overflow-hidden relative">
+        
+        <!-- LEFT PANEL: Tool Shelf -->
+        <div class="w-16 bg-[#030712] border-r border-gray-800 flex flex-col items-center py-4 gap-3 z-10 shadow-xl">
+            <div class="text-[9px] text-gray-600 font-bold mb-1 tracking-widest">TOOLS</div>
+            
+            <button id="tool-select" class="tool-btn active" title="Select (V)">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 15l-2 5L9 9l11 4-5 2zm0 0l5 5M7.188 2.239l.777 2.897M5.136 7.965l-2.898-.777M13.95 4.05l-2.122 2.122m-5.657 5.656l-2.12 2.122"></path></svg>
+            </button>
+            <button id="tool-box" class="tool-btn" title="Box / Marquee (M)">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4h4v4H4zM16 4h4v4h-4zM4 16h4v4H4zM16 16h4v4h-4zM8 6h8M8 18h8M6 8v8M18 8v8"></path></svg>
+            </button>
+            <button id="tool-lasso" class="tool-btn" title="Lasso Select (L)">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A4 4 0 002 9v11a2 2 0 002 2h10a2 2 0 002-2v-5.655l-1.248-.832zM16 3a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+            </button>
+            <button id="tool-wand" class="tool-btn" title="Magic Wand / Linked Faces (W)">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z"></path></svg>
+            </button>
+
+            <div class="w-8 h-px bg-gray-800 my-2"></div>
+            <div class="text-[9px] text-gray-600 font-bold mb-1 tracking-widest">GIZMO</div>
+
+            <!-- Gizmo Icons Diferenciados -->
+            <button id="gizmo-translate" class="tool-btn active" title="Move">
+                <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 16 16"><path fill-rule="evenodd" d="M8 0a.5.5 0 0 1 .5.5v7h7a.5.5 0 0 1 0 1h-7v7a.5.5 0 0 1-1 0v-7h-7a.5.5 0 0 1 0-1h7v-7A.5.5 0 0 1 8 0zM4.146 4.146a.5.5 0 0 1 .708 0L8 7.293l3.146-3.147a.5.5 0 0 1 .708.708L8.707 8l3.147 3.146a.5.5 0 0 1-.708.708L8 8.707l-3.146 3.147a.5.5 0 0 1-.708-.708L7.293 8 4.146 4.854a.5.5 0 0 1 0-.708z"/></svg>
+            </button>
+            <button id="gizmo-rotate" class="tool-btn" title="Rotate">
+                <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 16 16"><path fill-rule="evenodd" d="M8 3a5 5 0 1 0 4.546 2.914.5.5 0 0 1 .908-.417A6 6 0 1 1 8 2v1z"/><path d="M8 4.466V.534a.25.25 0 0 1 .41-.192l2.36 1.966c.12.1.12.284 0 .384L8.41 4.658A.25.25 0 0 1 8 4.466z"/></svg>
+            </button>
+            <button id="gizmo-scale" class="tool-btn" title="Scale">
+                <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 16 16"><path fill-rule="evenodd" d="M5 3.5a.5.5 0 0 1 .5-.5h2a.5.5 0 0 1 0 1H6.707l2.147 2.146a.5.5 0 1 1-.708.708L6 4.707V6a.5.5 0 0 1-1 0v-2.5zM11 3.5a.5.5 0 0 1 .5-.5h2a.5.5 0 0 1 .5.5v2.5a.5.5 0 0 1-1 0V4.707l-2.146 2.147a.5.5 0 0 1-.708-.708L12.293 4H11.5a.5.5 0 0 1-.5-.5zM5 12.5a.5.5 0 0 1 .5-.5h2a.5.5 0 0 1 0 1H6.707l2.147-2.146a.5.5 0 0 1-.708-.708L6 11.293V12.5a.5.5 0 0 1-1 0v-2.5zM11 12.5a.5.5 0 0 1 .5-.5h2a.5.5 0 0 1 .5.5v2.5a.5.5 0 0 1-1 0v-1.293l-2.146 2.147a.5.5 0 0 1-.708-.708L12.293 12H11.5a.5.5 0 0 1-.5-.5z"/></svg>
+            </button>
+        </div>
+
+        <!-- CENTER PANEL: 3D Viewport -->
+        <div class="flex-grow relative bg-gray-950 flex flex-col">
+            <!-- Top Toolbar over Viewport -->
+            <div class="absolute top-0 left-0 w-full p-3 pointer-events-none flex justify-between z-10">
+                <div class="flex gap-2 pointer-events-auto">
+                    <label for="file-upload" class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-1.5 rounded shadow cursor-pointer font-bold flex items-center gap-2">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path></svg>
+                        Import GLB
+                    </label>
+                    <input id="file-upload" type="file" class="hidden" accept=".glb" />
+                    
+                    <button id="btn-projects" class="bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-1.5 rounded shadow transition-all font-bold flex items-center gap-2">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4"></path></svg>
+                        Workspaces
+                    </button>
+
+                    <button id="btn-undo" class="bg-[#09090b] border border-gray-800 hover:bg-gray-800 text-white px-3 py-1.5 rounded shadow opacity-50 cursor-not-allowed transition-all" title="Undo (Ctrl+Z)">
+                        Undo
+                    </button>
+                    <button id="btn-wireframe" class="bg-[#09090b] border border-gray-800 hover:bg-gray-800 text-white px-3 py-1.5 rounded shadow transition-all">
+                        Wireframe
+                    </button>
+                    
+                    <!-- Background Color Picker -->
+                    <div class="flex items-center gap-2 bg-[#09090b] border border-gray-800 px-2 py-1.5 rounded shadow">
+                        <span class="text-[10px] text-gray-400" title="Viewport Background Color">BG:</span>
+                        <input type="color" id="bg-color" value="#030712" class="w-5 h-5 rounded cursor-pointer border-0 bg-transparent p-0">
+                    </div>
+                </div>
+            </div>
+
+            <canvas id="lasso-canvas"></canvas>
+            <div id="selection-box" class="hidden absolute border border-blue-400 bg-blue-500/20 pointer-events-none z-30"></div>
+            <div id="canvas-container" tabindex="0" class="flex-grow w-full h-full outline-none"></div>
+
+            <!-- Loading Overlay -->
+            <div id="loading-overlay" class="absolute inset-0 z-40 bg-gray-950/90 flex items-center justify-center hidden backdrop-blur-sm">
+                <div class="flex flex-col items-center">
+                    <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mb-4"></div>
+                    <p id="loading-text" class="text-blue-400 font-bold tracking-widest uppercase">PROCESSING...</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- RIGHT PANEL: Outliner & Properties -->
+        <div class="w-80 bg-[#030712] border-l border-gray-800 flex flex-col z-10 shadow-xl overflow-y-auto custom-scrollbar">
+            
+            <!-- Outliner / Hierarchy -->
+            <div class="p-4 border-b border-gray-800 flex-grow max-h-[50vh] flex flex-col">
+                <div class="flex justify-between items-end mb-3">
+                    <h2 class="text-sm font-bold text-gray-200 flex items-center gap-2">
+                        <svg class="w-4 h-4 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path></svg>
+                        Outliner
+                    </h2>
+                    <span id="filename-display" class="text-[10px] text-gray-500 truncate max-w-[120px]">No model</span>
+                </div>
+                
+                <div id="hierarchy-list" class="flex-grow overflow-y-auto custom-scrollbar bg-[#09090b] rounded border border-gray-800 p-1 space-y-0.5">
+                    <div class="text-gray-600 text-center italic py-4">Import a model first</div>
+                </div>
+
+                <!-- Modding Actions -->
+                <div class="grid grid-cols-2 gap-2 mt-3">
+                    <button id="btn-action-extract" class="py-1.5 bg-[#09090b] hover:bg-gray-800 border border-gray-800 text-gray-300 rounded shadow transition-all">Extract Part</button>
+                    <button id="btn-action-duplicate" class="py-1.5 bg-[#09090b] hover:bg-gray-800 border border-gray-800 text-gray-300 rounded shadow transition-all">Duplicate</button>
+                    <button id="btn-obj-mirror" class="py-1.5 bg-[#09090b] hover:bg-gray-800 border border-gray-800 text-gray-300 rounded shadow transition-all">Mirror (X)</button>
+                    <button id="btn-obj-center" class="py-1.5 bg-[#09090b] hover:bg-gray-800 border border-gray-800 text-gray-300 rounded shadow transition-all">Center Pivot</button>
+                </div>
+                <div class="flex gap-2 mt-2">
+                    <button id="btn-clear-sel" class="flex-1 py-1.5 bg-[#09090b] hover:bg-gray-800 border border-gray-800 text-gray-400 rounded">Clear Sel.</button>
+                    <button id="btn-delete-sel" class="flex-1 py-1.5 bg-red-900/20 hover:bg-red-900/40 border border-red-900/30 text-red-400 rounded transition-all">Delete (Del)</button>
+                </div>
+            </div>
+
+            <!-- Properties / Export -->
+            <div class="p-4 bg-[#09090b] flex-grow flex flex-col justify-between">
+                
+                <div class="space-y-4">
+                    <h2 class="text-sm font-bold text-gray-200 flex items-center gap-2">
+                        <svg class="w-4 h-4 text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"></path></svg>
+                        Properties
+                    </h2>
+                    
+                    <!-- Target Profiles -->
+                    <div>
+                        <label class="text-[10px] text-gray-500 uppercase tracking-wider mb-1 block">Export Target Profile</label>
+                        <select id="target-type" class="w-full bg-[#030712] border border-gray-800 text-gray-300 text-xs rounded p-2 focus:border-blue-500 focus:outline-none">
+                            <option value="full">Target: Full Poly (Original / No Limits)</option>
+                            <option value="car">Target: Car Body (Max 32k Verts)</option>
+                            <option value="wheel" selected>Target: Wheel (Max 4,240 Polys)</option>
+                        </select>
+                    </div>
+
+                    <!-- Stats -->
+                    <div class="bg-[#030712] rounded border border-gray-800 p-2 text-xs">
+                        <p class="flex justify-between items-center mb-1">
+                            <span class="text-gray-500">Vertices:</span>
+                            <span id="stat-verts" class="font-mono text-gray-300">0</span>
+                        </p>
+                        <p class="flex justify-between items-center">
+                            <span class="text-gray-500">Triangles:</span>
+                            <span id="stat-tris" class="font-mono text-gray-300">0</span>
+                        </p>
+                        <div id="poly-warning" class="hidden mt-2 p-1 bg-red-900/30 border border-red-900/50 text-red-400 text-[9px] text-center rounded">
+                            EXCEEDS ENGINE LIMITS
+                        </div>
+                    </div>
+
+                    <!-- Manual Decimation -->
+                    <div id="decimate-block" class="bg-[#030712] rounded border border-gray-800 p-3 transition-opacity duration-300">
+                        <div class="flex justify-between text-[10px] mb-2">
+                            <span class="text-gray-400">Target Polys:</span>
+                            <span id="target-val" class="text-blue-400 font-mono font-bold">...</span>
+                        </div>
+                        <input type="range" id="simplify-slider" min="100" max="32768" value="32000" class="w-full accent-blue-500 h-1 mb-3">
+                        <button id="btn-apply-decimate" class="w-full py-1.5 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded shadow transition-all disabled:opacity-50 disabled:cursor-not-allowed">
+                            Apply Optimization
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Export -->
+                <div class="mt-4 flex flex-col gap-2">
+                    <button id="btn-convert-sel" disabled class="w-full py-2 bg-[#030712] text-gray-500 font-bold rounded-lg cursor-not-allowed transition-all border border-gray-800 hover:bg-gray-800 hover:text-white">
+                        Export Selected (.OBJ)
+                    </button>
+                    <button id="btn-convert" disabled class="w-full py-3 bg-gray-800 text-gray-500 font-bold rounded-lg cursor-not-allowed transition-all border border-gray-700">
+                        Export Full Scene (.OBJ)
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- BOTTOM STATUS BAR -->
+    <div id="status-bar" class="w-full bg-[#09090b] border-t border-gray-800 text-gray-400 text-[10px] px-4 py-1.5 flex justify-between z-20 shadow-inner">
+        <span id="status-text"><strong class="text-blue-400">V</strong>: Select Tool | <strong class="text-blue-400">Shift+Click</strong>: Add to selection</span>
+        <span class="text-gray-600">LFS Modder's Toolkit</span>
     </div>
 
     <!-- Main Logic -->
@@ -230,6 +297,7 @@
         let modelContainer;
         let currentModel = null;
         let maxModelDimension = 1;
+        let currentGlbBuffer = null; // Para salvar no banco local
         
         let modelStats = { vertices: 0, triangles: 0 };
         let baseStats = { vertices: 0, triangles: 0 }; 
@@ -278,6 +346,7 @@
         const selectionBox = document.getElementById('selection-box');
         const fileInput = document.getElementById('file-upload');
         const btnConvert = document.getElementById('btn-convert');
+        const btnConvertSel = document.getElementById('btn-convert-sel');
         const loadingOverlay = document.getElementById('loading-overlay');
         const loadingText = document.getElementById('loading-text');
         
@@ -292,16 +361,14 @@
         const polyWarning = document.getElementById('poly-warning');
         const decimateBlock = document.getElementById('decimate-block');
         
-        const btnGizmoTranslate = document.getElementById('gizmo-translate');
-        const btnGizmoRotate = document.getElementById('gizmo-rotate');
-        const btnGizmoScale = document.getElementById('gizmo-scale');
-        
         const toolBtns = {
             select: document.getElementById('tool-select'),
             box: document.getElementById('tool-box'),
             lasso: document.getElementById('tool-lasso'),
             wand: document.getElementById('tool-wand')
         };
+        
+        const statusText = document.getElementById('status-text');
         
         const btnActionExtract = document.getElementById('btn-action-extract');
         const btnActionDuplicate = document.getElementById('btn-action-duplicate');
@@ -315,6 +382,18 @@
         const simplifySlider = document.getElementById('simplify-slider');
         const btnApplyDecimate = document.getElementById('btn-apply-decimate');
         const targetVal = document.getElementById('target-val');
+
+        // Intro / DB UI
+        document.getElementById('btn-start-app').addEventListener('click', () => {
+            document.getElementById('intro-modal').classList.add('hidden');
+        });
+        document.getElementById('btn-projects').addEventListener('click', () => {
+            document.getElementById('projects-modal').classList.remove('hidden');
+            loadProjectsList();
+        });
+        document.getElementById('btn-close-projects').addEventListener('click', () => {
+            document.getElementById('projects-modal').classList.add('hidden');
+        });
 
         // --- Init Three.js ---
         function initThreeJS() {
@@ -346,7 +425,7 @@
             scene.add(transformProxy);
 
             transformControl = new TransformControls(camera, renderer.domElement);
-            transformControl.size = 0.7; // Smaller gizmo for precision
+            transformControl.size = 0.7;
             
             transformControl.addEventListener('dragging-changed', function (event) {
                 controls.enabled = !event.value;
@@ -436,9 +515,9 @@
             window.addEventListener('resize', onWindowResize, false);
             setupMouseEvents();
             setupCameraHotkeys();
-            animate();
             
-            // Set initial cursor
+            onWindowResize();
+            animate();
             updateCursor();
         }
 
@@ -447,7 +526,7 @@
             camera.updateProjectionMatrix();
             renderer.setSize(container.clientWidth, container.clientHeight);
             
-            // Sync Lasso Canvas
+            // Sync Lasso Canvas Dimensions
             lassoCanvas.width = container.clientWidth;
             lassoCanvas.height = container.clientHeight;
         }
@@ -463,6 +542,88 @@
             scene.background = new THREE.Color(e.target.value);
         });
 
+        // --- Local Database (IndexedDB) ---
+        let db;
+        const request = indexedDB.open("ModderGLBProjects", 1);
+        request.onupgradeneeded = (e) => {
+            db = e.target.result;
+            if(!db.objectStoreNames.contains("projects")) db.createObjectStore("projects", { keyPath: "id" });
+        };
+        request.onsuccess = (e) => { db = e.target.result; };
+
+        document.getElementById('btn-save-project').addEventListener('click', () => {
+            if(!currentModel || !currentGlbBuffer) { alert("Import a GLB first!"); return; }
+            
+            const state = [];
+            currentModel.traverse((child) => {
+                if (child.isMesh && child.userData.originalGeometry) {
+                    state.push({
+                        name: child.name,
+                        uuid: child.uuid,
+                        deletedFaces: Array.from(child.userData.deletedFaces),
+                        selectedFaces: Array.from(child.userData.selectedFaces),
+                        positions: Array.from(child.userData.originalGeometry.attributes.position.array),
+                        matrix: child.matrixWorld.toArray()
+                    });
+                }
+            });
+
+            const proj = {
+                id: Date.now(),
+                name: originalFileName + " - " + new Date().toLocaleTimeString(),
+                glb: currentGlbBuffer,
+                state: state
+            };
+
+            const tx = db.transaction("projects", "readwrite");
+            tx.objectStore("projects").put(proj);
+            tx.oncomplete = () => { alert("Project Saved to Browser Storage!"); loadProjectsList(); };
+        });
+
+        function loadProjectsList() {
+            if(!db) return;
+            const list = document.getElementById('projects-list');
+            list.innerHTML = '';
+            
+            const tx = db.transaction("projects", "readonly");
+            const store = tx.objectStore("projects");
+            store.openCursor().onsuccess = (e) => {
+                const cursor = e.target.result;
+                if(cursor) {
+                    const p = cursor.value;
+                    const div = document.createElement('div');
+                    div.className = "flex justify-between items-center bg-gray-900 p-2 rounded";
+                    div.innerHTML = `<span class="text-xs text-gray-300 truncate mr-2">${p.name}</span>
+                        <div class="flex gap-1">
+                            <button class="bg-blue-600 hover:bg-blue-500 text-white px-2 py-1 rounded text-[10px]" onclick="window.loadProj(${p.id})">Load</button>
+                            <button class="bg-red-900 hover:bg-red-800 text-white px-2 py-1 rounded text-[10px]" onclick="window.delProj(${p.id})">Del</button>
+                        </div>`;
+                    list.appendChild(div);
+                    cursor.continue();
+                }
+            };
+        }
+
+        window.delProj = (id) => {
+            const tx = db.transaction("projects", "readwrite");
+            tx.objectStore("projects").delete(id);
+            tx.oncomplete = () => loadProjectsList();
+        };
+
+        window.loadProj = (id) => {
+            const tx = db.transaction("projects", "readonly");
+            tx.objectStore("projects").get(id).onsuccess = (e) => {
+                const p = e.target.result;
+                if(p) {
+                    originalFileName = p.name.split(" - ")[0];
+                    document.getElementById('filename-display').textContent = originalFileName;
+                    document.getElementById('projects-modal').classList.add('hidden');
+                    loadGLTF(p.glb, p.state);
+                }
+            };
+        };
+
+
         // --- Upload Logic ---
         fileInput.addEventListener('change', function(event) {
             const file = event.target.files[0];
@@ -473,12 +634,16 @@
             showLoading(true, "LOADING GLB...");
 
             const reader = new FileReader();
-            reader.onload = function(e) { loadGLTF(e.target.result); };
+            reader.onload = function(e) { 
+                currentGlbBuffer = e.target.result;
+                loadGLTF(currentGlbBuffer); 
+            };
             reader.readAsArrayBuffer(file);
         });
 
-        function loadGLTF(arrayBuffer) {
+        function loadGLTF(arrayBuffer, savedState = null) {
             const loader = new GLTFLoader();
+            currentGlbBuffer = arrayBuffer; // Cache in memory
             
             if (currentModel) {
                 modelContainer.remove(currentModel);
@@ -495,6 +660,7 @@
             loader.parse(arrayBuffer, '', (gltf) => {
                 currentModel = gltf.scene;
                 
+                // If loaded from project, we will apply state. Wait for full setup.
                 currentModel.traverse((child) => {
                     if (child.isMesh) {
                         if (child.material) {
@@ -503,7 +669,6 @@
                         }
                         
                         try {
-                            // Slightly higher tolerance to avoid creating micro-holes on sub-par models
                             let merged = BufferGeometryUtils.mergeVertices(child.geometry, 1e-4); 
                             merged.computeVertexNormals();
                             child.geometry = merged;
@@ -514,10 +679,34 @@
                         child.userData.selectedFaces = new Set();
                         child.userData.isHidden = false;
                         
-                        // Build Adjacency List for Magic Wand (Linked Selection)
                         buildAdjacencyList(child);
                     }
                 });
+
+                if(savedState) {
+                    // Restore state
+                    const toRemove = [];
+                    currentModel.traverse((child) => {
+                        if (child.isMesh) {
+                            const stateMatch = savedState.find(s => s.name === child.name || s.uuid === child.uuid);
+                            if(stateMatch) {
+                                child.userData.deletedFaces = new Set(stateMatch.deletedFaces);
+                                child.userData.selectedFaces = new Set(stateMatch.selectedFaces);
+                                child.userData.originalGeometry.attributes.position.array.set(stateMatch.positions);
+                                child.geometry.attributes.position.array.set(stateMatch.positions);
+                                child.geometry.attributes.position.needsUpdate = true;
+                                child.matrix.fromArray(stateMatch.matrix);
+                                child.matrix.decompose(child.position, child.quaternion, child.scale);
+                                
+                                // Check if fully deleted
+                                if(child.userData.deletedFaces.size === child.userData.originalGeometry.index.count/3) {
+                                    toRemove.push(child);
+                                }
+                            }
+                        }
+                    });
+                    toRemove.forEach(obj => obj.parent.remove(obj));
+                }
 
                 modelContainer.rotation.set(0, 0, 0);
 
@@ -534,14 +723,21 @@
                 modelContainer.add(currentModel);
                 resetCamera();
 
+                if(savedState) resetGeometryForErasing();
+
                 buildHierarchyTree();
                 updateTargetUI();
                 recalculateBaseStats();
                 clearHistory();
+                updateSelectionVisuals();
                 
                 btnConvert.disabled = false;
                 btnConvert.classList.remove('bg-gray-800', 'text-gray-500', 'cursor-not-allowed');
                 btnConvert.classList.add('bg-blue-600', 'text-white', 'hover:bg-blue-500', 'border-blue-500');
+
+                btnConvertSel.disabled = false;
+                btnConvertSel.classList.remove('bg-[#030712]', 'text-gray-500', 'cursor-not-allowed');
+                btnConvertSel.classList.add('text-gray-300');
 
                 showLoading(false);
             }, () => { alert("Error loading GLB file."); showLoading(false); });
@@ -571,6 +767,9 @@
 
             currentModel.traverse((child) => {
                 if (child.isMesh) {
+                    // Do not list empty meshes
+                    if(child.userData.deletedFaces.size >= child.userData.originalGeometry.index.count/3) return;
+
                     partCount++;
                     const name = child.name || `Object_${partCount}`;
                     
@@ -631,6 +830,7 @@
             toolBtns[toolName].classList.add('active');
             updateCursor();
             controls.enabled = (toolName === 'select' || toolName === 'wand');
+            updateStatusBar();
         }
         
         function updateCursor() {
@@ -640,21 +840,27 @@
             else container.classList.add('cursor-select');
         }
 
+        function updateStatusBar() {
+            let txt = '';
+            if (currentTool === 'select') txt = '<strong class="text-blue-400">V</strong>: Select | <strong class="text-blue-400">Shift+Click</strong>: Add to selection';
+            if (currentTool === 'box') txt = '<strong class="text-blue-400">M</strong>: Marquee Box | <strong class="text-blue-400">Drag</strong> to select multiple elements';
+            if (currentTool === 'lasso') txt = '<strong class="text-blue-400">L</strong>: Lasso Freehand | <strong class="text-blue-400">Draw</strong> outline to select region';
+            if (currentTool === 'wand') txt = '<strong class="text-blue-400">W</strong>: Magic Wand | <strong class="text-blue-400">Click</strong> to select all linked faces instantly';
+            statusText.innerHTML = txt;
+        }
+
         Object.keys(toolBtns).forEach(key => {
             toolBtns[key].addEventListener('click', () => setTool(key));
         });
 
         // Keyboard Shortcuts
         window.addEventListener('keydown', (e) => {
-            if (document.activeElement.tagName === 'INPUT') return;
+            if (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA') return;
             const key = e.key.toLowerCase();
             if (key === 'v') setTool('select');
             if (key === 'm') setTool('box');
             if (key === 'l') setTool('lasso');
             if (key === 'w') setTool('wand');
-            if (key === 'g') setGizmoMode('translate');
-            if (key === 'r') setGizmoMode('rotate');
-            if (key === 's') setGizmoMode('scale');
         });
 
         // --- Modding Tools (Object Level) ---
@@ -797,6 +1003,12 @@
         // --- Limits & Stats ---
         targetTypeSelect.addEventListener('change', () => {
             if(!currentModel) return;
+            
+            // Full poly visual correction fix
+            if (targetTypeSelect.value === 'full') {
+                resetGeometryForErasing();
+            }
+            
             updateTargetUI();
             updateLiveStats();
         });
@@ -960,13 +1172,19 @@
         function setGizmoMode(mode) {
             currentGizmoMode = mode;
             transformControl.setMode(mode);
-            btnGizmoTranslate.classList.toggle('active-gizmo', mode === 'translate');
-            btnGizmoRotate.classList.toggle('active-gizmo', mode === 'rotate');
-            btnGizmoScale.classList.toggle('active-gizmo', mode === 'scale');
+            document.getElementById('gizmo-translate').classList.toggle('active', mode === 'translate');
+            document.getElementById('gizmo-rotate').classList.toggle('active', mode === 'rotate');
+            document.getElementById('gizmo-scale').classList.toggle('active', mode === 'scale');
+            
+            let txt = '';
+            if (mode === 'translate') txt = "Translate / Move Selection Handles";
+            if (mode === 'rotate') txt = "Rotate Selection Handles";
+            if (mode === 'scale') txt = "Scale Selection Handles";
+            statusText.innerHTML = `<span class='text-emerald-400'>${txt}</span>`;
         }
-        btnGizmoTranslate.addEventListener('click', () => setGizmoMode('translate'));
-        btnGizmoRotate.addEventListener('click', () => setGizmoMode('rotate'));
-        btnGizmoScale.addEventListener('click', () => setGizmoMode('scale'));
+        document.getElementById('gizmo-translate').addEventListener('click', () => setGizmoMode('translate'));
+        document.getElementById('gizmo-rotate').addEventListener('click', () => setGizmoMode('rotate'));
+        document.getElementById('gizmo-scale').addEventListener('click', () => setGizmoMode('scale'));
 
         function activateGizmoIfNeeded() {
             let hasSelection = false;
@@ -1076,7 +1294,7 @@
                 if (currentTool === 'box' && isMarqueeSelecting) {
                     isMarqueeSelecting = false;
                     selectionBox.classList.add('hidden');
-                    controls.enabled = false; // keep disabled until action is done
+                    controls.enabled = false;
                     
                     if (marqueeStart.distanceTo(marqueeEnd) > 5) {
                         saveHistoryState();
@@ -1100,7 +1318,6 @@
                     }
                 }
                 
-                // Reset controls state
                 if(currentTool === 'select' || currentTool === 'wand') controls.enabled = true;
             });
         }
@@ -1114,7 +1331,7 @@
             for(let i=1; i<lassoPoints.length; i++) {
                 lassoCtx.lineTo(lassoPoints[i][0], lassoPoints[i][1]);
             }
-            lassoCtx.strokeStyle = '#3B82F6';
+            lassoCtx.strokeStyle = '#60A5FA';
             lassoCtx.lineWidth = 1.5;
             lassoCtx.stroke();
             
@@ -1143,8 +1360,6 @@
             const minY = -(Math.max(marqueeStart.y, marqueeEnd.y) / rect.height * 2 - 1);
             const maxY = -(Math.min(marqueeStart.y, marqueeEnd.y) / rect.height * 2 - 1);
 
-            let selectedAny = false;
-            
             if(!addMode) currentModel.traverse(c => { if(c.isMesh) c.userData.selectedFaces.clear(); });
 
             currentModel.traverse((child) => {
@@ -1167,7 +1382,6 @@
 
                         if (isInside(vA) || isInside(vB) || isInside(vC)) {
                             child.userData.selectedFaces.add(faceIdx);
-                            selectedAny = true;
                         }
                     }
                 }
@@ -1181,8 +1395,6 @@
         function performLassoSelection(addMode) {
             if (!currentModel) return;
             const rect = container.getBoundingClientRect();
-            let selectedAny = false;
-            
             if(!addMode) currentModel.traverse(c => { if(c.isMesh) c.userData.selectedFaces.clear(); });
 
             currentModel.traverse((child) => {
@@ -1197,18 +1409,15 @@
                         const faceIdx = i / 3;
                         if (deleted.has(faceIdx)) continue;
                         
-                        // Check using face center for speed and accuracy
                         const idxA = index.getX(i), idxB = index.getX(i+1), idxC = index.getX(i+2);
                         vA.fromBufferAttribute(pos, idxA).add(new THREE.Vector3().fromBufferAttribute(pos, idxB)).add(new THREE.Vector3().fromBufferAttribute(pos, idxC)).divideScalar(3);
                         vA.applyMatrix4(matrix).project(camera);
                         
-                        // Convert back to pixel space
                         const px = (vA.x + 1) / 2 * rect.width;
                         const py = -(vA.y - 1) / 2 * rect.height;
 
                         if (vA.z <= 1 && pointInPolygon([px, py], lassoPoints)) {
                             child.userData.selectedFaces.add(faceIdx);
-                            selectedAny = true;
                         }
                     }
                 }
@@ -1316,24 +1525,39 @@
             }
         }
 
+        // DELETING LOGIC WITH OUTLINER SYNC
         function deleteSelectedFaces() {
             let deletedAny = false;
             saveHistoryState();
             disableGizmo();
             
+            const toRemove = [];
+
             currentModel.traverse((child) => {
                 if (child.isMesh && child.userData.selectedFaces && child.userData.selectedFaces.size > 0 && !child.userData.isHidden) {
                     child.userData.selectedFaces.forEach(faceIdx => child.userData.deletedFaces.add(faceIdx));
                     child.userData.selectedFaces.clear();
                     deletedAny = true;
+                    
+                    // Outliner Sync: If entirely deleted, flag for removal
+                    const totalFaces = child.userData.originalGeometry.index.count / 3;
+                    if(child.userData.deletedFaces.size >= totalFaces) {
+                        toRemove.push(child);
+                    }
                 }
             });
+            
+            // Remove from Scene
+            toRemove.forEach(obj => {
+                if (obj.parent) obj.parent.remove(obj);
+            });
+
             if (deletedAny) {
                 updateSelectionVisuals();
                 hoverMesh.visible = false;
                 resetGeometryForErasing();
                 recalculateBaseStats();
-                buildHierarchyTree();
+                buildHierarchyTree(); // Update UI
             } else {
                 historyStack.pop();
             }
@@ -1344,6 +1568,7 @@
             saveHistoryState();
             let createdAny = false;
             const newMeshesToAttach = [];
+            const toRemove = [];
 
             currentModel.traverse((child) => {
                 if (child.isMesh && child.userData.selectedFaces && child.userData.selectedFaces.size > 0 && !child.userData.isHidden) {
@@ -1390,6 +1615,11 @@
 
                     if (isExtract) {
                         child.userData.selectedFaces.forEach(faceIdx => child.userData.deletedFaces.add(faceIdx));
+                        
+                        // Outliner Sync extraction
+                        if(child.userData.deletedFaces.size >= child.userData.originalGeometry.index.count/3) {
+                            toRemove.push(child);
+                        }
                     }
                     child.userData.selectedFaces.clear();
                     createdAny = true;
@@ -1398,6 +1628,7 @@
 
             if (createdAny) {
                 newMeshesToAttach.forEach(item => item.parent.add(item.mesh));
+                toRemove.forEach(obj => { if(obj.parent) obj.parent.remove(obj); });
                 disableGizmo();
                 updateSelectionVisuals();
                 resetGeometryForErasing();
@@ -1405,7 +1636,7 @@
                 buildHierarchyTree();
             } else {
                 historyStack.pop();
-                alert("Please select faces to " + (isExtract ? "extract" : "duplicate") + ".");
+                alert("Selecione polígonos primeiro.");
             }
         }
 
@@ -1531,24 +1762,27 @@
         }
 
         // --- Export LFS .OBJ ---
-        btnConvert.addEventListener('click', () => {
+        btnConvert.addEventListener('click', () => executeExport(false));
+        btnConvertSel.addEventListener('click', () => executeExport(true));
+
+        function executeExport(onlySelected) {
             if (!currentModel) return;
             
             const target = targetTypeSelect.value;
-            if (target !== 'full' && (modelStats.vertices > LIMITS[target].verts || modelStats.triangles > LIMITS[target].polys)) {
-                const confirmExport = confirm(`Warning: Model exceeds limits for ${target}. It may fail to import. Export anyway?`);
+            if (!onlySelected && target !== 'full' && (modelStats.vertices > LIMITS[target].verts || modelStats.triangles > LIMITS[target].polys)) {
+                const confirmExport = confirm(`Atenção: A cena toda excede os limites de poli para o modo ${target}. LFS pode falhar a conversão. Quer exportar mesmo assim?`);
                 if (!confirmExport) return;
             }
 
             showLoading(true, "GENERATING LFS .OBJ...");
             setTimeout(() => {
-                const objBlob = generateOBJBlob(currentModel);
-                downloadBlob(objBlob, `${originalFileName}.obj`);
+                const objBlob = generateOBJBlob(currentModel, onlySelected);
+                downloadBlob(objBlob, `${originalFileName}${onlySelected ? '_selected' : ''}.obj`);
                 showLoading(false);
             }, 100);
-        });
+        }
 
-        function generateOBJBlob(modelScene) {
+        function generateOBJBlob(modelScene, onlySelected) {
             let output = "# Exported for Live for Speed Editor\n# Coordinate System: Y forward, Z up\n\n";
             let globalVertexOffset = 1;
 
@@ -1556,17 +1790,37 @@
             
             modelScene.traverse((child) => {
                 if (child.isMesh && child.geometry && child.geometry.index && !child.userData.isHidden) {
+                    
+                    if (onlySelected && (!child.userData.selectedFaces || child.userData.selectedFaces.size === 0)) {
+                        return; // Pula se exportação for seletiva e a peça não tiver nada selecionado
+                    }
+
                     const geom = child.geometry;
                     const pos = geom.attributes.position;
                     const norm = geom.attributes.normal;
                     const index = geom.index;
                     
+                    const usedIndices = new Set();
+                    
+                    if(onlySelected) {
+                        // Gather vertices just for selected faces
+                        for (let i = 0; i < index.count; i += 3) {
+                            if (child.userData.selectedFaces.has(i / 3)) {
+                                usedIndices.add(index.getX(i));
+                                usedIndices.add(index.getX(i+1));
+                                usedIndices.add(index.getX(i+2));
+                            }
+                        }
+                    } else {
+                        // Gather all vertices
+                        for (let i = 0; i < index.count; i++) usedIndices.add(index.getX(i));
+                    }
+
+                    if(usedIndices.size === 0) return;
+
                     output += `o ${child.name || 'Mesh'}\n`;
                     const matrix = child.matrixWorld;
                     const normalMatrix = new THREE.Matrix3().getNormalMatrix(matrix);
-                    
-                    const usedIndices = new Set();
-                    for (let i = 0; i < index.count; i++) usedIndices.add(index.getX(i));
                     
                     const indexMap = new Map();
                     let localNewIndex = 0;
@@ -1591,6 +1845,9 @@
                     }
                     
                     for (let i = 0; i < index.count; i += 3) {
+                        const faceIdx = i / 3;
+                        if (onlySelected && !child.userData.selectedFaces.has(faceIdx)) continue;
+                        
                         const a = indexMap.get(index.getX(i)), b = indexMap.get(index.getX(i+1)), c = indexMap.get(index.getX(i+2));
                         if (norm) output += `f ${a}//${a} ${b}//${b} ${c}//${c}\n`;
                         else output += `f ${a} ${b} ${c}\n`;
